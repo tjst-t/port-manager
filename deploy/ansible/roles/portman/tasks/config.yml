@@ -1,23 +1,4 @@
 ---
-- name: Create portman config directory
-  ansible.builtin.file:
-    path: /etc/portman
-    state: directory
-    mode: '0755'
-
-- name: Create portman data directory
-  ansible.builtin.file:
-    path: /var/lib/portman
-    state: directory
-    mode: '0755'
-
-- name: Create portal output directory
-  ansible.builtin.file:
-    path: "{{ portman_dashboard_output_dir | default('/var/lib/portman/portal') }}"
-    state: directory
-    mode: '0755'
-  when: portman_dashboard_enabled | default(true)
-
 - name: Deploy config.toml
   ansible.builtin.template:
     src: config.toml.j2

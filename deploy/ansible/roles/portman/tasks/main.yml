@@ -2,6 +2,9 @@
 - name: Include install tasks
   ansible.builtin.include_tasks: install.yml
 
+- name: Include directory tasks
+  ansible.builtin.include_tasks: directories.yml
+
 - name: Include config tasks
   ansible.builtin.include_tasks: config.yml
 
