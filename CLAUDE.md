@@ -5,13 +5,17 @@
 portman は開発環境向けDHCPライクなポート管理CLIツール。
 Go + cobra + SQLite で実装する。
 
+## 実装ロードマップ
+
+Issue #14 に依存関係を含む実装順序を記載。Phase順に進めること。
+
 ## 技術スタック
 
 - **言語**: Go 1.22+
 - **CLI フレームワーク**: cobra
-- **DB**: SQLite (github.com/mattn/go-sqlite3 または modernc.org/sqlite)
-- **設定**: TOML (github.com/BurntSushi/toml)
-- **JSON**: 標準ライブラリ encoding/json
+- **DB**: SQLite — **`modernc.org/sqlite` を使うこと**（CGO不要、クロスコンパイル対応。`mattn/go-sqlite3` は使わない）
+- **設定**: TOML (`github.com/BurntSushi/toml`)
+- **JSON**: 標準ライブラリ `encoding/json`
 
 ## ディレクトリ構成
 
@@ -50,9 +54,9 @@ portman/
 ## CLIコマンド一覧
 
 ```bash
-portman lease [--name <service>] [--expose] [--worktree <name>]
-portman release [--name <service>] [--worktree <name>]
-portman exec [--name <service>] [--expose] [--worktree <name>] -- <command> {}
+portman lease [--name <service>] [--expose] [--worktree <n>]
+portman release [--name <service>] [--worktree <n>]
+portman exec [--name <service>] [--expose] [--worktree <n>] -- <command> {}
 portman env [--name <service>]... [--expose] [--output <path>]
 portman list
 portman gc
@@ -101,11 +105,17 @@ portman reserve <port> [--description <desc>]
 - SIGTERM/SIGINTを子プロセスに伝搬すること
 - 子プロセス終了後の自動releaseはしない（再起動時に同じポートを返すため）
 
+### env動作
+- 複数 `--name` を受け取り、それぞれにポートをリース
+- `NAME_PORT=XXXX` 形式で出力（name: 小文字→大文字、ハイフン→アンダースコア、末尾`_PORT`）
+- `--output <path>` でファイル書き出し、なければstdout
+
 ### Caddy連携
 - Admin API (`localhost:2019`) で動的にルート追加・削除
 - `--expose` のもののみCaddyに登録。内部ポートはCaddyに触らない
 - Caddy APIが落ちている場合はリースだけ記録し、次回sync時に回復
 - Caddy操作は `internal/proxy/caddy.go` に集約すること（将来の差し替え考慮）
+- ルートの `@id` は `portman-{hostname}` 形式で付与（削除・sync時に使用）
 
 ### ダッシュボード
 - `dashboard.auto_update = true` の場合、expose/release/sync/gc後に静的HTML再生成
@@ -116,12 +126,47 @@ portman reserve <port> [--description <desc>]
 - ホスト名衝突: エラーを出して --name での区別を促す
 - 非gitディレクトリで --worktree なし: エラー
 
+## Makefile統合パターン
+
+各プロジェクトのMakefileにportmanを組み込む。Claude Codeは `make serve` を叩くだけでよい。
+
+```makefile
+.PHONY: serve
+serve:
+	portman exec --name api --expose -- go run main.go --port {}
+
+.PHONY: serve-frontend
+serve-frontend:
+	portman exec --name frontend --expose -- npx vite --port {}
+```
+
+## 各プロジェクトのCLAUDE.mdに書くべき内容
+
+```markdown
+## サーバー起動
+テストサーバーは `make serve` で起動すること。ポート番号を直接指定しない。
+
+## Docker Compose
+portman env --expose --name api --name db --output .env
+docker compose up
+
+## やってはいけないこと
+- ソースコードやdocker-compose.ymlにポート番号をハードコードしない
+- .envファイルをgit commitしない（.gitignoreに追加すること）
+```
+
 ## ビルド・テスト
 
 ```bash
 go build -o portman .
 go test ./...
 ```
+
+## リリース
+
+GoReleaserでクロスコンパイル（linux/amd64, linux/arm64）。
+GitHub Releasesにバイナリをアップロード。
+Ansible roleはGitHub ReleasesのURLからバイナリを取得する。
 
 ## コーディング規約
 
