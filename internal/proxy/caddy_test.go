@@ -19,7 +19,7 @@ func setupTestServer(t *testing.T, handler http.HandlerFunc) (*CaddyClient, *htt
 
 	client := NewCaddyClient(config.ProxyConfig{
 		CaddyAPI:     server.URL,
-		DomainSuffix: "cdev.vm.tjstkm.net",
+		DomainSuffix: "example.com",
 	})
 	return client, server
 }
@@ -53,7 +53,7 @@ func TestAddRoute(t *testing.T) {
 	}
 	matchObj := matchList[0].(map[string]any)
 	hosts := matchObj["host"].([]any)
-	if hosts[0] != "api--main--palmux.cdev.vm.tjstkm.net" {
+	if hosts[0] != "api--main--palmux.example.com" {
 		t.Errorf("unexpected host: %v", hosts[0])
 	}
 }
@@ -203,7 +203,7 @@ func TestSyncAll(t *testing.T) {
 
 	dashCfg := config.DashboardConfig{
 		Enabled:   true,
-		Host:      "portal.cdev.vm.tjstkm.net",
+		Host:      "portal.example.com",
 		OutputDir: "/var/lib/portman/portal",
 	}
 

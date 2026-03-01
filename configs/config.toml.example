@@ -11,11 +11,11 @@ stale_ttl_hours = 24
 [proxy]
 type = "caddy"
 caddy_api = "http://localhost:2019"
-domain_suffix = "cdev.vm.tjstkm.net"
+domain_suffix = "example.com"
 host_pattern = "{name}--{worktree}--{repo}"
 
 [dashboard]
 enabled = true
-host = "portal.cdev.vm.tjstkm.net"
+host = "portal.example.com"
 output_dir = "/var/lib/portman/portal"
 auto_update = true

@@ -28,7 +28,7 @@ func TestGenerate_CreatesFile(t *testing.T) {
 		{Name: "grafana", Port: 3000, Expose: true},
 	}
 
-	err := Generate(dir, leases, permanents, "cdev.vm.tjstkm.net")
+	err := Generate(dir, leases, permanents, "example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestGenerate_CreatesFile(t *testing.T) {
 	}
 
 	// Check expose link
-	if !strings.Contains(html, "api--main--palmux.cdev.vm.tjstkm.net") {
+	if !strings.Contains(html, "api--main--palmux.example.com") {
 		t.Error("expected FQDN link for exposed lease")
 	}
 

@@ -31,7 +31,7 @@ roles_path = vendor/port-manager/deploy/ansible/roles
 | `portman_port_range_start` | `8200` | ポートレンジ開始 |
 | `portman_port_range_end` | `8999` | ポートレンジ終了 |
 | `portman_stale_ttl_hours` | `24` | staleリースのTTL（時間） |
-| `portman_domain_suffix` | `cdev.vm.tjstkm.net` | ホスト名サフィックス |
+| `portman_domain_suffix` | `example.com` | ホスト名サフィックス |
 | `portman_dashboard_enabled` | `true` | ダッシュボード有効化 |
 | `portman_services` | (reserved: 80,443,2019) | 保護ポート・常設サービス定義 |
 | `portman_gc_interval` | `hourly` | GC実行間隔 |

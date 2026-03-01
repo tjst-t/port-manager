@@ -119,7 +119,7 @@ portman reserve <port> [--description <desc>]
 
 ### ホスト名生成
 ```
-{name}--{worktree}--{repo}.cdev.vm.tjstkm.net
+{name}--{worktree}--{repo}.example.com
 ```
 - 区切りは `--`（ブランチ名のハイフンと区別するため）
 - projectのorg部分は使わない。repo名のみ使用

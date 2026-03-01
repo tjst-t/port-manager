@@ -85,12 +85,12 @@ func DefaultConfig() Config {
 		Proxy: ProxyConfig{
 			Type:         "caddy",
 			CaddyAPI:     "http://localhost:2019",
-			DomainSuffix: "cdev.vm.tjstkm.net",
+			DomainSuffix: "example.com",
 			HostPattern:  "{name}--{worktree}--{repo}",
 		},
 		Dashboard: DashboardConfig{
 			Enabled:    true,
-			Host:       "portal.cdev.vm.tjstkm.net",
+			Host:       "portal.example.com",
 			OutputDir:  "/var/lib/portman/portal",
 			AutoUpdate: true,
 		},

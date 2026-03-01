@@ -11,11 +11,11 @@ stale_ttl_hours = {{ portman_stale_ttl_hours | default(24) }}
 [proxy]
 type = "{{ portman_proxy_type | default('caddy') }}"
 caddy_api = "{{ portman_caddy_api | default('http://localhost:2019') }}"
-domain_suffix = "{{ portman_domain_suffix | default('cdev.vm.tjstkm.net') }}"
+domain_suffix = "{{ portman_domain_suffix | default('example.com') }}"
 host_pattern = "{{ portman_host_pattern | default('{name}--{worktree}--{repo}') }}"
 
 [dashboard]
 enabled = {{ portman_dashboard_enabled | default(true) | lower }}
-host = "{{ portman_dashboard_host | default('portal.cdev.vm.tjstkm.net') }}"
+host = "{{ portman_dashboard_host | default('portal.example.com') }}"
 output_dir = "{{ portman_dashboard_output_dir | default('/var/lib/portman/portal') }}"
 auto_update = {{ portman_dashboard_auto_update | default(true) | lower }}

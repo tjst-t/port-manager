@@ -39,7 +39,7 @@
 ## 4. ホスト名生成
 
 ```
-{name}--{worktree}--{repo}.cdev.vm.tjstkm.net
+{name}--{worktree}--{repo}.example.com
 ```
 
 - 区切りは `--`（ブランチ名のハイフンと区別するため）
@@ -48,12 +48,12 @@
   - 内部識別キーではフルのproject名を保持し一意性を保証
   - ホスト名衝突時はleaseでエラーを出して `--name` での区別を促す
 - DNS不正文字（スラッシュ、アンダースコア等）はハイフンに置換
-- ワイルドカードDNS: `*.cdev.vm.tjstkm.net` → サーバIPへのAレコード
+- ワイルドカードDNS: `*.example.com` → サーバIPへのAレコード
 - TLS: 利用者の選択（Let's Encrypt DNS-01チャレンジ推奨）
 
 name=defaultの場合:
 ```
-default--feature-xyz--palmux.cdev.vm.tjstkm.net
+default--feature-xyz--palmux.example.com
 ```
 
 ## 5. ポート割当
@@ -125,12 +125,12 @@ stale_ttl_hours = 24
 [proxy]
 type = "caddy"
 caddy_api = "http://localhost:2019"
-domain_suffix = "cdev.vm.tjstkm.net"
+domain_suffix = "example.com"
 host_pattern = "{name}--{worktree}--{repo}"
 
 [dashboard]
 enabled = true
-host = "portal.cdev.vm.tjstkm.net"
+host = "portal.example.com"
 output_dir = "/var/lib/portman/portal"
 auto_update = true
 ```
@@ -254,14 +254,14 @@ PORT   DESCRIPTION
 ```bash
 curl localhost:2019/config/apps/http/servers/srv0/routes -X POST \
   -H "Content-Type: application/json" \
-  -d '{"match":[{"host":["api--local-service--palmux.cdev.vm.tjstkm.net"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:8234"}]}]}'
+  -d '{"match":[{"host":["api--local-service--palmux.example.com"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:8234"}]}]}'
 ```
 
 ## 10. ダッシュボード
 
 - `dashboard.auto_update = true` の場合、expose/release/register/sync/gc後に静的HTML再生成
 - `/var/lib/portman/portal/index.html` にリース一覧のリンク集を生成
-- Caddy自身が `portal.cdev.vm.tjstkm.net` で静的ファイルを配信
+- Caddy自身が `portal.example.com` で静的ファイルを配信
 - active/stale/permanent/exposeの状態を表示
 
 ## 11. Makefile統合

@@ -27,7 +27,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Proxy.CaddyAPI != "http://localhost:2019" {
 		t.Errorf("unexpected CaddyAPI: %s", cfg.Proxy.CaddyAPI)
 	}
-	if cfg.Proxy.DomainSuffix != "cdev.vm.tjstkm.net" {
+	if cfg.Proxy.DomainSuffix != "example.com" {
 		t.Errorf("unexpected DomainSuffix: %s", cfg.Proxy.DomainSuffix)
 	}
 	if cfg.Proxy.HostPattern != "{name}--{worktree}--{repo}" {

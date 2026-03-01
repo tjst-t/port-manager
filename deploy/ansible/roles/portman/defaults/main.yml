@@ -17,12 +17,12 @@ portman_stale_ttl_hours: 24
 # Proxy
 portman_proxy_type: caddy
 portman_caddy_api: "http://localhost:2019"
-portman_domain_suffix: cdev.vm.tjstkm.net
+portman_domain_suffix: example.com
 portman_host_pattern: "{name}--{worktree}--{repo}"
 
 # Dashboard
 portman_dashboard_enabled: true
-portman_dashboard_host: "portal.cdev.vm.tjstkm.net"
+portman_dashboard_host: "portal.example.com"
 portman_dashboard_output_dir: /var/lib/portman/portal
 portman_dashboard_auto_update: true
 
