@@ -9,6 +9,48 @@ Go + cobra + SQLite で実装する。
 
 Issue #14 に依存関係を含む実装順序を記載。Phase順に進めること。
 
+## 実装の進め方
+
+- Issue #14 のロードマップに従い、Phase順に実装すること
+- 各Issueの要件を必ず読み、要件に従って実装すること
+- 不明点があれば docs/DESIGN.md を参照すること
+- 各パッケージ実装後に `go test ./...` を実行して全テストが通ることを確認してから次のIssueに進むこと
+- `go vet ./...` もパスすること
+- コミットはIssue単位で行い、コミットメッセージに `refs #N` を含めること（例: `feat: internal/config 実装 refs #2`）
+- Phase内のIssueは番号順に実装すること
+
+### Phase別の指示テンプレート
+
+Phase 1:
+```
+GitHub Issue #14 の実装ロードマップを読んで、Phase 1 の3つのIssue (#2, #4, #7) を順番に実装してください。
+各Issueの要件を読み、CLAUDE.mdの規約に従うこと。
+各パッケージ実装後に go test ./... が通ることを確認してから次に進むこと。
+コミットはIssue単位で refs #N を含めること。
+```
+
+Phase 2:
+```
+Issue #14 のPhase 2 (#3, #5, #6, #8) を順番に実装してください。
+Phase 1で作ったパッケージを使うこと。各Issue完了ごとにテストを通すこと。
+コミットはIssue単位で refs #N を含めること。
+```
+
+Phase 3:
+```
+Issue #14 のPhase 3 (#9, #10, #11) を実装してください。
+internal/以下のパッケージを組み合わせてcobraコマンドを実装すること。
+コミットはIssue単位で refs #N を含めること。
+```
+
+Phase 4:
+```
+Issue #14 のPhase 4 (#13, #12) を実装してください。
+#13: .github/workflows/ にCI/CDを構築、.goreleaser.yml を作成。
+#12: deploy/ansible/roles/portman/ にAnsible roleを実装。
+コミットはIssue単位で refs #N を含めること。
+```
+
 ## 技術スタック
 
 - **言語**: Go 1.22+
@@ -160,6 +202,7 @@ docker compose up
 ```bash
 go build -o portman .
 go test ./...
+go vet ./...
 ```
 
 ## リリース
