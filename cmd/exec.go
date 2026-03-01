@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	execpkg "github.com/tjst-t/port-manager/internal/exec"
@@ -56,9 +57,22 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Register with Caddy if expose was added
-	if result.ExposeAdded {
-		if err := app.Caddy.AddRoute(result.Lease.Hostname, result.Lease.Port); err != nil {
+	// Start the command (but don't register with Caddy yet)
+	runner, err := execpkg.Start(args[0], args[1:], result.Lease.Port)
+	if err != nil {
+		return err
+	}
+
+	// Wait for startup grace period (2s) to confirm process stays alive
+	alive, waitErr := runner.WaitStartup(2 * time.Second)
+	if !alive {
+		// Process exited during startup — skip Caddy registration, keep lease for retry
+		return waitErr
+	}
+
+	// Process is alive — register with Caddy if expose is enabled
+	if result.Lease.Expose {
+		if err := app.Caddy.EnsureRoute(result.Lease.Hostname, result.Lease.Port); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to register with Caddy: %v\n", err)
 		}
 	}
@@ -66,7 +80,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// Update dashboard
 	maybeUpdateDashboard(app)
 
-	// Execute the command with port substitution
-	// No auto-release after command exits
-	return execpkg.Run(args[0], args[1:], result.Lease.Port)
+	// Wait for process to complete
+	// No auto-release after command exits (reuse same port on restart)
+	return runner.Wait()
 }

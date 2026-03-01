@@ -125,6 +125,60 @@ func TestIsAvailable_Down(t *testing.T) {
 	}
 }
 
+func TestEnsureRoute_DeleteNotFound(t *testing.T) {
+	var requests []string
+
+	client, _ := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodDelete {
+			// Route doesn't exist yet — 404 is expected and ignored
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("not found"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	err := client.EnsureRoute("api--main--palmux", 8234)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 requests (DELETE + POST), got %d: %v", len(requests), requests)
+	}
+	if requests[0] != "DELETE /id/portman-api--main--palmux" {
+		t.Errorf("expected DELETE request first, got %s", requests[0])
+	}
+	if !strings.HasSuffix(requests[1], "/config/apps/http/servers/srv0/routes") || !strings.HasPrefix(requests[1], "POST") {
+		t.Errorf("expected POST request second, got %s", requests[1])
+	}
+}
+
+func TestEnsureRoute_DeleteSuccess(t *testing.T) {
+	var requests []string
+
+	client, _ := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	err := client.EnsureRoute("api--main--palmux", 8234)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 requests (DELETE + POST), got %d: %v", len(requests), requests)
+	}
+	if requests[0] != "DELETE /id/portman-api--main--palmux" {
+		t.Errorf("expected DELETE request first, got %s", requests[0])
+	}
+	if !strings.HasPrefix(requests[1], "POST") {
+		t.Errorf("expected POST request second, got %s", requests[1])
+	}
+}
+
 func TestSyncAll(t *testing.T) {
 	var routes []string
 

@@ -116,6 +116,14 @@ func (c *CaddyClient) RemoveRoute(hostname string) error {
 	return nil
 }
 
+// EnsureRoute idempotently registers a reverse proxy route in Caddy.
+// It removes any existing route with the same @id before adding the new one,
+// preventing duplicate routes.
+func (c *CaddyClient) EnsureRoute(hostname string, port int) error {
+	_ = c.RemoveRoute(hostname)
+	return c.AddRoute(hostname, port)
+}
+
 // SyncAll removes all portman-managed routes and re-registers all expose leases
 // and expose permanent services. If dashboard is enabled, its route is also added.
 func (c *CaddyClient) SyncAll(leases []db.Lease, permanents []config.PermanentService, dashCfg config.DashboardConfig) error {
