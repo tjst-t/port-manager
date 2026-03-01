@@ -1,0 +1,19 @@
+{
+  "reserved": [
+    { "port": 80, "description": "caddy http" },
+    { "port": 443, "description": "caddy https" },
+    { "port": 2019, "description": "caddy admin api" }
+  ],
+  "permanent": [
+    {
+      "name": "grafana",
+      "port": 3000,
+      "expose": true
+    },
+    {
+      "name": "prometheus",
+      "port": 9090,
+      "expose": false
+    }
+  ]
+}

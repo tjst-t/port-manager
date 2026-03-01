@@ -1,0 +1,9 @@
+[Unit]
+Description=Run portman gc periodically
+
+[Timer]
+OnCalendar={{ portman_gc_interval | default('hourly') }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

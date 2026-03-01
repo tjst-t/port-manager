@@ -1,0 +1,21 @@
+# /etc/portman/config.toml
+
+[general]
+db_path = "/var/lib/portman/portman.db"
+
+[ports]
+range_start = 8200
+range_end = 8999
+stale_ttl_hours = 24
+
+[proxy]
+type = "caddy"
+caddy_api = "http://localhost:2019"
+domain_suffix = "cdev.vm.tjstkm.net"
+host_pattern = "{name}--{worktree}--{repo}"
+
+[dashboard]
+enabled = true
+host = "portal.cdev.vm.tjstkm.net"
+output_dir = "/var/lib/portman/portal"
+auto_update = true

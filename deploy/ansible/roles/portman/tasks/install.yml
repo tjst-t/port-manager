@@ -1,0 +1,27 @@
+---
+- name: Download portman binary
+  ansible.builtin.get_url:
+    url: "{{ portman_binary_url }}"
+    dest: /usr/local/bin/portman
+    mode: '0755'
+  when: portman_binary_url is defined
+
+- name: Build portman from source
+  when: portman_binary_url is not defined
+  block:
+    - name: Clone repository
+      ansible.builtin.git:
+        repo: "{{ portman_repo_url | default('https://github.com/tjst-t/port-manager.git') }}"
+        dest: /tmp/port-manager
+        version: "{{ portman_version | default('main') }}"
+
+    - name: Build binary
+      ansible.builtin.command:
+        cmd: go build -o /usr/local/bin/portman .
+        chdir: /tmp/port-manager
+      changed_when: true
+
+    - name: Clean up source
+      ansible.builtin.file:
+        path: /tmp/port-manager
+        state: absent

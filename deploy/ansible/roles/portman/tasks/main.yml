@@ -1,0 +1,12 @@
+---
+- name: Include install tasks
+  ansible.builtin.include_tasks: install.yml
+
+- name: Include config tasks
+  ansible.builtin.include_tasks: config.yml
+
+- name: Include systemd tasks
+  ansible.builtin.include_tasks: systemd.yml
+
+- name: Include caddy tasks
+  ansible.builtin.include_tasks: caddy.yml

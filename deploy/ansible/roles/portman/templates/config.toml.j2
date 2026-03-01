@@ -1,0 +1,21 @@
+# Managed by Ansible - do not edit manually
+
+[general]
+db_path = "{{ portman_db_path | default('/var/lib/portman/portman.db') }}"
+
+[ports]
+range_start = {{ portman_port_range_start | default(8200) }}
+range_end = {{ portman_port_range_end | default(8999) }}
+stale_ttl_hours = {{ portman_stale_ttl_hours | default(24) }}
+
+[proxy]
+type = "{{ portman_proxy_type | default('caddy') }}"
+caddy_api = "{{ portman_caddy_api | default('http://localhost:2019') }}"
+domain_suffix = "{{ portman_domain_suffix | default('cdev.vm.tjstkm.net') }}"
+host_pattern = "{{ portman_host_pattern | default('{name}--{worktree}--{repo}') }}"
+
+[dashboard]
+enabled = {{ portman_dashboard_enabled | default(true) | lower }}
+host = "{{ portman_dashboard_host | default('portal.cdev.vm.tjstkm.net') }}"
+output_dir = "{{ portman_dashboard_output_dir | default('/var/lib/portman/portal') }}"
+auto_update = {{ portman_dashboard_auto_update | default(true) | lower }}

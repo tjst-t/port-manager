@@ -1,0 +1,6 @@
+---
+- name: Run portman sync
+  ansible.builtin.command:
+    cmd: /usr/local/bin/portman sync
+  changed_when: true
+  ignore_errors: true

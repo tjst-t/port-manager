@@ -1,0 +1,32 @@
+---
+- name: Deploy portman-sync service
+  ansible.builtin.template:
+    src: portman-sync.service.j2
+    dest: /etc/systemd/system/portman-sync.service
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Deploy portman-gc service
+  ansible.builtin.template:
+    src: portman-gc.service.j2
+    dest: /etc/systemd/system/portman-gc.service
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Deploy portman-gc timer
+  ansible.builtin.template:
+    src: portman-gc.timer.j2
+    dest: /etc/systemd/system/portman-gc.timer
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Enable and start portman-gc timer
+  ansible.builtin.systemd:
+    name: portman-gc.timer
+    enabled: true
+    state: started
+
+- name: Enable portman-sync service
+  ansible.builtin.systemd:
+    name: portman-sync.service
+    enabled: true

@@ -1,0 +1,41 @@
+---
+# portman role defaults
+
+# Binary installation
+# portman_binary_url: https://github.com/tjst-t/port-manager/releases/download/v0.1.0/portman-linux-amd64
+# portman_repo_url: https://github.com/tjst-t/port-manager.git
+# portman_version: main
+
+# General
+portman_db_path: /var/lib/portman/portman.db
+
+# Port range
+portman_port_range_start: 8200
+portman_port_range_end: 8999
+portman_stale_ttl_hours: 24
+
+# Proxy
+portman_proxy_type: caddy
+portman_caddy_api: "http://localhost:2019"
+portman_domain_suffix: cdev.vm.tjstkm.net
+portman_host_pattern: "{name}--{worktree}--{repo}"
+
+# Dashboard
+portman_dashboard_enabled: true
+portman_dashboard_host: "portal.cdev.vm.tjstkm.net"
+portman_dashboard_output_dir: /var/lib/portman/portal
+portman_dashboard_auto_update: true
+
+# GC
+portman_gc_interval: hourly
+
+# Services (reserved ports and permanent services)
+portman_services:
+  reserved:
+    - port: 80
+      description: caddy http
+    - port: 443
+      description: caddy https
+    - port: 2019
+      description: caddy admin api
+  permanent: []

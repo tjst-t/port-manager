@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync portman leases to Caddy
+After=caddy.service
+BindsTo=caddy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/portman sync
+
+[Install]
+WantedBy=caddy.service
