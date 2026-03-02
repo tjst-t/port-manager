@@ -25,6 +25,7 @@ portman_dashboard_enabled: true
 portman_dashboard_host: "portal.example.com"
 portman_dashboard_output_dir: /var/lib/portman/portal
 portman_dashboard_auto_update: true
+portman_dashboard_serve_addr: ":8080"
 
 # GC
 portman_gc_interval: hourly

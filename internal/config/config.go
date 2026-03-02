@@ -50,6 +50,7 @@ type DashboardConfig struct {
 	Host       string `toml:"host"`
 	OutputDir  string `toml:"output_dir"`
 	AutoUpdate bool   `toml:"auto_update"`
+	ServeAddr  string `toml:"serve_addr"`
 }
 
 // Services represents static service definitions loaded from JSON.
@@ -93,6 +94,7 @@ func DefaultConfig() Config {
 			Host:       "portal.example.com",
 			OutputDir:  "/var/lib/portman/portal",
 			AutoUpdate: true,
+			ServeAddr:  ":8080",
 		},
 	}
 }

@@ -19,3 +19,4 @@ enabled = {{ portman_dashboard_enabled | default(true) | lower }}
 host = "{{ portman_dashboard_host | default('portal.example.com') }}"
 output_dir = "{{ portman_dashboard_output_dir | default('/var/lib/portman/portal') }}"
 auto_update = {{ portman_dashboard_auto_update | default(true) | lower }}
+serve_addr = "{{ portman_dashboard_serve_addr | default(':8080') }}"

@@ -30,3 +30,16 @@
   ansible.builtin.systemd:
     name: portman-sync.service
     enabled: true
+
+- name: Deploy portman-serve service
+  ansible.builtin.template:
+    src: portman-serve.service.j2
+    dest: /etc/systemd/system/portman-serve.service
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Enable and start portman-serve service
+  ansible.builtin.systemd:
+    name: portman-serve.service
+    enabled: true
+    state: started

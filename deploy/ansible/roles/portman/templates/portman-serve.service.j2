@@ -1,0 +1,12 @@
+[Unit]
+Description=portman live dashboard server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/portman serve --addr {{ portman_dashboard_serve_addr | default(':8080') }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

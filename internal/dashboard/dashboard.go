@@ -1,16 +1,106 @@
 package dashboard
 
 import (
+	"bytes"
 	"fmt"
-	"html"
+	"html/template"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/tjst-t/port-manager/internal/config"
 	"github.com/tjst-t/port-manager/internal/db"
 )
+
+// StatusChecker is a function that checks if a lease's process is alive.
+// Used by the live dashboard to show real-time status.
+type StatusChecker func(lease db.Lease) bool
+
+// LeaseView represents a lease for dashboard rendering.
+type LeaseView struct {
+	Name     string
+	Project  string
+	Worktree string
+	Port     int
+	Hostname string
+	Expose   bool
+	State    string
+	IsAlive  bool
+}
+
+// PermanentView represents a permanent service for dashboard rendering.
+type PermanentView struct {
+	Name   string
+	Port   int
+	Expose bool
+}
+
+// DashboardData contains all data needed to render the dashboard.
+type DashboardData struct {
+	Leases       []LeaseView
+	Permanents   []PermanentView
+	DomainSuffix string
+	IsLive       bool
+	GeneratedAt  string
+}
+
+// BuildDashboardData constructs the view model for the dashboard template.
+// If checker is nil, IsAlive defaults to true for active leases.
+func BuildDashboardData(leases []db.Lease, permanents []config.PermanentService, domainSuffix string, checker StatusChecker, isLive bool) DashboardData {
+	// Filter out stale leases — dashboard is an access link collection
+	var views []LeaseView
+	for _, l := range leases {
+		if l.State == "stale" {
+			continue
+		}
+		alive := true
+		if checker != nil {
+			alive = checker(l)
+		}
+		views = append(views, LeaseView{
+			Name:     l.Name,
+			Project:  l.Project,
+			Worktree: l.Worktree,
+			Port:     l.Port,
+			Hostname: l.Hostname,
+			Expose:   l.Expose,
+			State:    l.State,
+			IsAlive:  alive,
+		})
+	}
+
+	var permViews []PermanentView
+	for _, p := range permanents {
+		permViews = append(permViews, PermanentView{
+			Name:   p.Name,
+			Port:   p.Port,
+			Expose: p.Expose,
+		})
+	}
+
+	return DashboardData{
+		Leases:       views,
+		Permanents:   permViews,
+		DomainSuffix: domainSuffix,
+		IsLive:       isLive,
+		GeneratedAt:  time.Now().Format("2006-01-02 15:04:05"),
+	}
+}
+
+// RenderHTML renders the dashboard HTML from the given data.
+func RenderHTML(data DashboardData) (string, error) {
+	tmpl, err := template.New("dashboard").Funcs(funcMap()).Parse(dashboardTemplate)
+	if err != nil {
+		return "", fmt.Errorf("parsing template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("executing template: %w", err)
+	}
+
+	return buf.String(), nil
+}
 
 // Generate creates a static HTML dashboard at outputDir/index.html.
 func Generate(outputDir string, leases []db.Lease, permanents []config.PermanentService, domainSuffix string) error {
@@ -18,7 +108,11 @@ func Generate(outputDir string, leases []db.Lease, permanents []config.Permanent
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
-	htmlContent := renderHTML(leases, permanents, domainSuffix)
+	data := BuildDashboardData(leases, permanents, domainSuffix, nil, false)
+	htmlContent, err := RenderHTML(data)
+	if err != nil {
+		return fmt.Errorf("rendering dashboard: %w", err)
+	}
 
 	path := filepath.Join(outputDir, "index.html")
 	if err := os.WriteFile(path, []byte(htmlContent), 0644); err != nil {
@@ -28,23 +122,45 @@ func Generate(outputDir string, leases []db.Lease, permanents []config.Permanent
 	return nil
 }
 
-func renderHTML(leases []db.Lease, permanents []config.PermanentService, domainSuffix string) string {
-	// Filter out stale leases — dashboard is an access link collection
-	var activeLeases []db.Lease
-	for _, l := range leases {
-		if l.State != "stale" {
-			activeLeases = append(activeLeases, l)
-		}
+func funcMap() template.FuncMap {
+	return template.FuncMap{
+		"exposeBadge": func(expose bool) template.HTML {
+			if expose {
+				return `<span class="badge badge-yes">yes</span>`
+			}
+			return `<span class="badge badge-no">no</span>`
+		},
+		"statusHTML": func(v LeaseView) template.HTML {
+			if v.IsAlive {
+				return `<span class="active">●</span> active`
+			}
+			return `<span class="stale">○</span> not running`
+		},
+		"leaseLink": func(v LeaseView, domainSuffix string) template.HTML {
+			if v.Expose {
+				fqdn := template.HTMLEscapeString(v.Hostname) + "." + template.HTMLEscapeString(domainSuffix)
+				return template.HTML(fmt.Sprintf(`<a href="https://%s" target="_blank">%s</a>`, fqdn, fqdn))
+			}
+			return template.HTML(fmt.Sprintf("%d", v.Port))
+		},
+		"permanentLink": func(v PermanentView, domainSuffix string) template.HTML {
+			if v.Expose {
+				fqdn := template.HTMLEscapeString(v.Name) + "." + template.HTMLEscapeString(domainSuffix)
+				return template.HTML(fmt.Sprintf(`<a href="https://%s" target="_blank">%s</a>`, fqdn, fqdn))
+			}
+			return template.HTML(fmt.Sprintf("%d", v.Port))
+		},
 	}
-	leases = activeLeases
+}
 
-	var b strings.Builder
-
-	b.WriteString(`<!DOCTYPE html>
+const dashboardTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{- if .IsLive}}
+<meta http-equiv="refresh" content="30">
+{{- end}}
 <title>portman dashboard</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -68,76 +184,26 @@ footer{margin-top:20px;font-size:.75rem;color:#999}
 </head>
 <body>
 <h1>portman dashboard</h1>
-`)
-
-	// Leases table
-	b.WriteString(`<h2>Leases</h2>
+<h2>Leases</h2>
 <table>
 <tr><th>Name</th><th>Project</th><th>Branch</th><th>Port</th><th>Status</th><th>Expose</th><th>Link</th></tr>
-`)
-
-	if len(leases) == 0 {
-		b.WriteString(`<tr><td colspan="7" style="text-align:center;color:#999">No active leases</td></tr>`)
-	}
-	for _, l := range leases {
-		statusIcon := `<span class="active">●</span> active`
-		if l.State == "stale" {
-			statusIcon = `<span class="stale">○</span> stale`
-		}
-
-		exposeBadge := `<span class="badge badge-no">no</span>`
-		if l.Expose {
-			exposeBadge = `<span class="badge badge-yes">yes</span>`
-		}
-
-		link := fmt.Sprintf("%d", l.Port)
-		if l.Expose {
-			fqdn := l.Hostname + "." + domainSuffix
-			link = fmt.Sprintf(`<a href="https://%s" target="_blank">%s</a>`,
-				html.EscapeString(fqdn), html.EscapeString(fqdn))
-		}
-
-		fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-			html.EscapeString(l.Name),
-			html.EscapeString(l.Project),
-			html.EscapeString(l.Worktree),
-			l.Port,
-			statusIcon,
-			exposeBadge,
-			link,
-		)
-	}
-	b.WriteString("</table>\n")
-
-	// Permanent services table
-	if len(permanents) > 0 {
-		b.WriteString(`<h2>Permanent Services</h2>
+{{- if not .Leases}}
+<tr><td colspan="7" style="text-align:center;color:#999">No active leases</td></tr>
+{{- end}}
+{{- range .Leases}}
+<tr><td>{{.Name}}</td><td>{{.Project}}</td><td>{{.Worktree}}</td><td>{{.Port}}</td><td>{{statusHTML .}}</td><td>{{exposeBadge .Expose}}</td><td>{{leaseLink . $.DomainSuffix}}</td></tr>
+{{- end}}
+</table>
+{{- if .Permanents}}
+<h2>Permanent Services</h2>
 <table>
 <tr><th>Name</th><th>Port</th><th>Expose</th><th>Link</th></tr>
-`)
-		for _, p := range permanents {
-			exposeBadge := `<span class="badge badge-no">no</span>`
-			if p.Expose {
-				exposeBadge = `<span class="badge badge-yes">yes</span>`
-			}
-
-			link := fmt.Sprintf("%d", p.Port)
-			if p.Expose {
-				fqdn := p.Name + "." + domainSuffix
-				link = fmt.Sprintf(`<a href="https://%s" target="_blank">%s</a>`,
-					html.EscapeString(fqdn), html.EscapeString(fqdn))
-			}
-
-			fmt.Fprintf(&b, "<tr><td><span class=\"permanent\">★</span> %s</td><td>%d</td><td>%s</td><td>%s</td></tr>\n",
-				html.EscapeString(p.Name), p.Port, exposeBadge, link)
-		}
-		b.WriteString("</table>\n")
-	}
-
-	fmt.Fprintf(&b, `<footer>Generated by portman at %s</footer>
+{{- range .Permanents}}
+<tr><td><span class="permanent">&#9733;</span> {{.Name}}</td><td>{{.Port}}</td><td>{{exposeBadge .Expose}}</td><td>{{permanentLink . $.DomainSuffix}}</td></tr>
+{{- end}}
+</table>
+{{- end}}
+<footer>Generated by portman at {{.GeneratedAt}}</footer>
 </body>
 </html>
-`, time.Now().Format("2006-01-02 15:04:05"))
-
-	return b.String()
-}
+`

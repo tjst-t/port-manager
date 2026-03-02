@@ -69,7 +69,7 @@ func TestGenerate_CreatesFile(t *testing.T) {
 	if !strings.Contains(html, "grafana") {
 		t.Error("expected permanent service 'grafana'")
 	}
-	if !strings.Contains(html, "★") {
+	if !strings.Contains(html, "★") && !strings.Contains(html, "&#9733;") {
 		t.Error("expected permanent indicator")
 	}
 }

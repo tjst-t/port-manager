@@ -166,17 +166,32 @@ func (c *CaddyClient) SyncAll(leases []db.Lease, permanents []config.PermanentSe
 	return nil
 }
 
-// addDashboardRoute registers the dashboard file_server route.
+// addDashboardRoute registers the dashboard route.
+// If ServeAddr is configured, uses reverse_proxy to the serve process.
+// Otherwise, uses file_server with the static output directory.
 func (c *CaddyClient) addDashboardRoute(dashCfg config.DashboardConfig) error {
-	route := map[string]any{
-		"@id":   "portman-dashboard",
-		"match": []map[string]any{{"host": []string{dashCfg.Host}}},
-		"handle": []map[string]any{
+	var handle []map[string]any
+	if dashCfg.ServeAddr != "" {
+		dial := normalizeAddr(dashCfg.ServeAddr)
+		handle = []map[string]any{
+			{
+				"handler":   "reverse_proxy",
+				"upstreams": []map[string]string{{"dial": dial}},
+			},
+		}
+	} else {
+		handle = []map[string]any{
 			{
 				"handler": "file_server",
 				"root":    dashCfg.OutputDir,
 			},
-		},
+		}
+	}
+
+	route := map[string]any{
+		"@id":    "portman-dashboard",
+		"match":  []map[string]any{{"host": []string{dashCfg.Host}}},
+		"handle": handle,
 	}
 
 	body, err := json.Marshal(route)
@@ -200,6 +215,14 @@ func (c *CaddyClient) addDashboardRoute(dashCfg config.DashboardConfig) error {
 	}
 
 	return nil
+}
+
+// normalizeAddr converts ":8080" to "localhost:8080".
+func normalizeAddr(addr string) string {
+	if len(addr) > 0 && addr[0] == ':' {
+		return "localhost" + addr
+	}
+	return addr
 }
 
 // IsAvailable checks if the Caddy Admin API is reachable.
