@@ -2,7 +2,9 @@ package port
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -40,12 +42,12 @@ func setupTestManager(t *testing.T) *Manager {
 
 func TestIsProcessAlive(t *testing.T) {
 	// Current process should be alive
-	if !isProcessAlive(os.Getpid()) {
+	if !IsProcessAlive(os.Getpid()) {
 		t.Error("expected current process to be alive")
 	}
 
 	// PID that almost certainly doesn't exist
-	if isProcessAlive(99999999) {
+	if IsProcessAlive(99999999) {
 		t.Error("expected non-existent PID to be dead")
 	}
 }
@@ -304,6 +306,9 @@ func TestRunGC_WorktreeRemoval(t *testing.T) {
 	if len(result.WorktreeRemoved) != 1 {
 		t.Errorf("expected 1 worktree removed, got %d", len(result.WorktreeRemoved))
 	}
+	if len(result.WorktreeRemoved) == 1 && result.WorktreeRemoved[0].Lease.Port == 0 {
+		t.Error("expected lease port to be set in GCEntry")
+	}
 }
 
 func TestRunGC_TTLExpiration(t *testing.T) {
@@ -329,6 +334,9 @@ func TestRunGC_TTLExpiration(t *testing.T) {
 
 	if len(gcResult.TTLExpired) != 1 {
 		t.Errorf("expected 1 TTL expired, got %d", len(gcResult.TTLExpired))
+	}
+	if len(gcResult.TTLExpired) == 1 && gcResult.TTLExpired[0].Lease.Port == 0 {
+		t.Error("expected lease port to be set in GCEntry")
 	}
 }
 
@@ -478,5 +486,125 @@ func TestRunGC_WorktreeExists(t *testing.T) {
 
 	if len(result.WorktreeRemoved) != 0 {
 		t.Error("should not remove lease for existing worktree")
+	}
+}
+
+func TestTerminateProcess(t *testing.T) {
+	// Start a sleep process
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start sleep process: %v", err)
+	}
+	pid := cmd.Process.Pid
+
+	// Reap zombie in background so IsProcessAlive works correctly after kill
+	done := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(done)
+	}()
+
+	// Verify it's alive
+	if !IsProcessAlive(pid) {
+		t.Fatal("expected sleep process to be alive")
+	}
+
+	// Terminate it
+	if !terminateProcess(pid) {
+		t.Error("expected terminateProcess to succeed")
+	}
+
+	// Wait for the process to be fully reaped
+	<-done
+}
+
+func TestFindPIDByPort(t *testing.T) {
+	// Start a TCP listener
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer ln.Close()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	expectedPID := os.Getpid()
+
+	pid := findPIDByPort(port)
+	if pid != expectedPID {
+		t.Errorf("expected PID %d, got %d", expectedPID, pid)
+	}
+}
+
+func TestFindPIDByPort_NotFound(t *testing.T) {
+	// Port that is not listening
+	pid := findPIDByPort(19999)
+	if pid != 0 {
+		t.Errorf("expected PID 0 for non-listening port, got %d", pid)
+	}
+}
+
+func TestKillLeaseProcess_WithPID(t *testing.T) {
+	// Start a sleep process
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start sleep process: %v", err)
+	}
+	pid := cmd.Process.Pid
+
+	// Reap zombie in background
+	done := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(done)
+	}()
+
+	lease := db.Lease{
+		PID:  pid,
+		Port: 0, // no port, PID-based kill only
+	}
+
+	ki := killLeaseProcess(lease)
+	if ki == nil {
+		t.Fatal("expected KillInfo, got nil")
+	}
+	if ki.PID != pid {
+		t.Errorf("expected PID %d, got %d", pid, ki.PID)
+	}
+	if ki.Method != "pid" {
+		t.Errorf("expected method 'pid', got %s", ki.Method)
+	}
+
+	<-done
+}
+
+func TestKillLeaseProcess_NoPID_NoProcess(t *testing.T) {
+	lease := db.Lease{
+		PID:  0,
+		Port: 19998, // not listening
+	}
+
+	ki := killLeaseProcess(lease)
+	if ki != nil {
+		t.Errorf("expected nil KillInfo for no process, got %+v", ki)
+	}
+}
+
+func TestIsPortListening(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer ln.Close()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	if !IsPortListening(port) {
+		t.Errorf("expected port %d to be listening", port)
+	}
+
+	ln.Close()
+	// Give a small delay for the port to be released
+	time.Sleep(50 * time.Millisecond)
+	if IsPortListening(port) {
+		t.Errorf("expected port %d to not be listening after close", port)
 	}
 }

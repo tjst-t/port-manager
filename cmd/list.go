@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"net"
 	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tjst-t/port-manager/internal/port"
 )
 
 var listCmd = &cobra.Command{
@@ -43,7 +42,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 		status := "○ stale"
 		if l.State == "active" {
-			if isListening(l.Port) {
+			if port.IsPortListening(l.Port) {
 				status = "● listening"
 			} else {
 				status = "○ not listening"
@@ -82,13 +81,4 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-func isListening(port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 300*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
 }

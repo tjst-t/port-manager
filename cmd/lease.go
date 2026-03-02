@@ -42,16 +42,16 @@ func runLease(cmd *cobra.Command, args []string) error {
 	if gcResult, err := app.Manager.MaybeLightGC(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: light GC failed: %v\n", err)
 	} else if gcResult != nil {
-		for _, l := range gcResult.WorktreeRemoved {
-			fmt.Fprintf(os.Stderr, "gc: removed lease %s (worktree gone)\n", l.Hostname)
-			if l.Expose {
-				_ = app.Caddy.RemoveRoute(l.Hostname)
+		for _, entry := range gcResult.WorktreeRemoved {
+			fmt.Fprintf(os.Stderr, "gc: removed lease %s (worktree gone)\n", entry.Lease.Hostname)
+			if entry.Lease.Expose {
+				_ = app.Caddy.RemoveRoute(entry.Lease.Hostname)
 			}
 		}
-		for _, l := range gcResult.TTLExpired {
-			fmt.Fprintf(os.Stderr, "gc: removed lease %s (TTL expired)\n", l.Hostname)
-			if l.Expose {
-				_ = app.Caddy.RemoveRoute(l.Hostname)
+		for _, entry := range gcResult.TTLExpired {
+			fmt.Fprintf(os.Stderr, "gc: removed lease %s (TTL expired)\n", entry.Lease.Hostname)
+			if entry.Lease.Expose {
+				_ = app.Caddy.RemoveRoute(entry.Lease.Hostname)
 			}
 		}
 	}

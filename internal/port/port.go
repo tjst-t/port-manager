@@ -1,9 +1,12 @@
 package port
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -47,11 +50,23 @@ type ReleaseResult struct {
 	WasExpose bool
 }
 
+// KillInfo describes how a process was killed during GC.
+type KillInfo struct {
+	PID    int
+	Method string // "pid" or "port-lookup"
+}
+
+// GCEntry pairs a lease with optional kill information.
+type GCEntry struct {
+	Lease    db.Lease
+	KillInfo *KillInfo
+}
+
 // GCResult contains the result of a GC run.
 type GCResult struct {
-	WorktreeRemoved []db.Lease
+	WorktreeRemoved []GCEntry
 	StaleMarked     []db.Lease
-	TTLExpired      []db.Lease
+	TTLExpired      []GCEntry
 }
 
 // Allocate assigns a port based on the request parameters.
@@ -219,10 +234,11 @@ func (m *Manager) RunGC() (*GCResult, error) {
 
 	for _, lease := range leases {
 		if _, err := os.Stat(lease.WorktreePath); os.IsNotExist(err) {
+			ki := killLeaseProcess(lease)
 			if err := m.DB.DeleteLease(lease.ID); err != nil {
 				return nil, fmt.Errorf("deleting lease (worktree gone): %w", err)
 			}
-			result.WorktreeRemoved = append(result.WorktreeRemoved, lease)
+			result.WorktreeRemoved = append(result.WorktreeRemoved, GCEntry{Lease: lease, KillInfo: ki})
 		}
 	}
 
@@ -234,10 +250,10 @@ func (m *Manager) RunGC() (*GCResult, error) {
 
 	for _, lease := range activeLeases {
 		shouldMarkStale := false
-		if lease.PID > 0 && !isProcessAlive(lease.PID) {
+		if lease.PID > 0 && !IsProcessAlive(lease.PID) {
 			// PID is tracked and process is dead → immediate stale
 			shouldMarkStale = true
-		} else if lease.PID <= 0 && !isPortListening(lease.Port) {
+		} else if lease.PID <= 0 && !IsPortListening(lease.Port) {
 			// No PID tracked → fallback to port listen check
 			shouldMarkStale = true
 		}
@@ -260,10 +276,11 @@ func (m *Manager) RunGC() (*GCResult, error) {
 	now := time.Now()
 	for _, lease := range staleLeases {
 		if lease.StaleSince != nil && now.Sub(*lease.StaleSince) > ttl {
+			ki := killLeaseProcess(lease)
 			if err := m.DB.DeleteLease(lease.ID); err != nil {
 				return nil, fmt.Errorf("deleting expired lease: %w", err)
 			}
-			result.TTLExpired = append(result.TTLExpired, lease)
+			result.TTLExpired = append(result.TTLExpired, GCEntry{Lease: lease, KillInfo: ki})
 		}
 	}
 
@@ -289,20 +306,153 @@ func (m *Manager) MaybeLightGC() (*GCResult, error) {
 	return m.RunGC()
 }
 
-// isProcessAlive checks if a process with the given PID is still running.
-func isProcessAlive(pid int) bool {
+// IsProcessAlive checks if a process with the given PID is still running.
+func IsProcessAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || err == syscall.EPERM
 }
 
-// isPortListening checks if a port is currently being listened on.
-func isPortListening(port int) bool {
+// IsPortListening checks if a port is currently being listened on.
+func IsPortListening(port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 500*time.Millisecond)
 	if err != nil {
 		return false
 	}
 	conn.Close()
 	return true
+}
+
+// findPIDByPort searches /proc/net/tcp and /proc/net/tcp6 to find the PID
+// listening on the given port. Returns 0 if not found (best-effort).
+func findPIDByPort(port int) int {
+	inode := findInodeByPort(port)
+	if inode == 0 {
+		return 0
+	}
+	return findPIDByInode(inode)
+}
+
+// findInodeByPort parses /proc/net/tcp and /proc/net/tcp6 looking for a socket
+// in LISTEN state on the given port, and returns its inode.
+func findInodeByPort(port int) uint64 {
+	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
+		if inode := findInodeInFile(path, port); inode != 0 {
+			return inode
+		}
+	}
+	return 0
+}
+
+// findInodeInFile parses a /proc/net/tcp{,6} file for a listening socket on the given port.
+func findInodeInFile(path string, port int) uint64 {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Scan() // skip header line
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 10 {
+			continue
+		}
+		// fields[1] = local_address (hex_ip:hex_port)
+		// fields[3] = state (0A = LISTEN)
+		// fields[9] = inode
+		if fields[3] != "0A" {
+			continue // not LISTEN state
+		}
+		parts := strings.Split(fields[1], ":")
+		if len(parts) != 2 {
+			continue
+		}
+		hexPort := parts[1]
+		p, err := strconv.ParseUint(hexPort, 16, 16)
+		if err != nil {
+			continue
+		}
+		if int(p) == port {
+			inode, err := strconv.ParseUint(fields[9], 10, 64)
+			if err != nil {
+				continue
+			}
+			return inode
+		}
+	}
+	return 0
+}
+
+// findPIDByInode walks /proc/*/fd/ to find which process owns the given socket inode.
+func findPIDByInode(inode uint64) int {
+	target := fmt.Sprintf("socket:[%d]", inode)
+
+	procDirs, err := filepath.Glob("/proc/[0-9]*/fd/*")
+	if err != nil {
+		return 0
+	}
+
+	for _, fdPath := range procDirs {
+		link, err := os.Readlink(fdPath)
+		if err != nil {
+			continue
+		}
+		if link == target {
+			// fdPath is /proc/<pid>/fd/<n>
+			parts := strings.Split(fdPath, "/")
+			if len(parts) >= 3 {
+				pid, err := strconv.Atoi(parts[2])
+				if err == nil {
+					return pid
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// terminateProcess sends SIGTERM, then polls up to 3 seconds, then SIGKILL if still alive.
+// Returns true if the process was successfully terminated.
+func terminateProcess(pid int) bool {
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		return false
+	}
+
+	// Poll every 100ms for up to 3 seconds
+	for i := 0; i < 30; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if !IsProcessAlive(pid) {
+			return true
+		}
+	}
+
+	// Still alive — SIGKILL
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	time.Sleep(100 * time.Millisecond)
+	return !IsProcessAlive(pid)
+}
+
+// killLeaseProcess attempts to kill the process associated with a lease.
+// It tries the stored PID first, then falls back to port-based lookup.
+// Returns nil if no process was found or killed.
+func killLeaseProcess(lease db.Lease) *KillInfo {
+	// Try stored PID first
+	if lease.PID > 0 && IsProcessAlive(lease.PID) {
+		if terminateProcess(lease.PID) {
+			return &KillInfo{PID: lease.PID, Method: "pid"}
+		}
+	}
+
+	// Fallback: find PID by port
+	pid := findPIDByPort(lease.Port)
+	if pid > 0 && IsProcessAlive(pid) {
+		if terminateProcess(pid) {
+			return &KillInfo{PID: pid, Method: "port-lookup"}
+		}
+	}
+
+	return nil
 }
 
 // isUniqueConstraintError checks if the error is a SQLite UNIQUE constraint violation.
@@ -340,7 +490,7 @@ func (m *Manager) Audit() ([]AuditResult, error) {
 		if knownPorts[port] {
 			continue
 		}
-		if isPortListening(port) {
+		if IsPortListening(port) {
 			results = append(results, AuditResult{Port: port})
 		}
 	}

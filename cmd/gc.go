@@ -29,9 +29,14 @@ func runGC(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("running GC: %w", err)
 	}
 
-	for _, l := range result.WorktreeRemoved {
-		fmt.Fprintf(os.Stderr, "removed: %s:%s:%s (port %d) — worktree path gone\n",
-			l.Project, l.Worktree, l.Name, l.Port)
+	for _, entry := range result.WorktreeRemoved {
+		l := entry.Lease
+		killMsg := ""
+		if entry.KillInfo != nil {
+			killMsg = fmt.Sprintf(", killed PID %d (%s)", entry.KillInfo.PID, entry.KillInfo.Method)
+		}
+		fmt.Fprintf(os.Stderr, "removed: %s:%s:%s (port %d) — worktree path gone%s\n",
+			l.Project, l.Worktree, l.Name, l.Port, killMsg)
 		if l.Expose {
 			if err := app.Caddy.RemoveRoute(l.Hostname); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: failed to remove Caddy route for %s: %v\n", l.Hostname, err)
@@ -44,9 +49,14 @@ func runGC(cmd *cobra.Command, args []string) error {
 			l.Project, l.Worktree, l.Name, l.Port)
 	}
 
-	for _, l := range result.TTLExpired {
-		fmt.Fprintf(os.Stderr, "expired: %s:%s:%s (port %d) — TTL exceeded\n",
-			l.Project, l.Worktree, l.Name, l.Port)
+	for _, entry := range result.TTLExpired {
+		l := entry.Lease
+		killMsg := ""
+		if entry.KillInfo != nil {
+			killMsg = fmt.Sprintf(", killed PID %d (%s)", entry.KillInfo.PID, entry.KillInfo.Method)
+		}
+		fmt.Fprintf(os.Stderr, "expired: %s:%s:%s (port %d) — TTL exceeded%s\n",
+			l.Project, l.Worktree, l.Name, l.Port, killMsg)
 		if l.Expose {
 			if err := app.Caddy.RemoveRoute(l.Hostname); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: failed to remove Caddy route for %s: %v\n", l.Hostname, err)
