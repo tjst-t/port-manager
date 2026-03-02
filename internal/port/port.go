@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/tjst-t/port-manager/internal/config"
 	"github.com/tjst-t/port-manager/internal/db"
 	"github.com/tjst-t/port-manager/internal/git"
 )
+
+const maxAllocateRetries = 3
 
 // Manager handles port allocation, release, and GC operations.
 type Manager struct {
@@ -109,26 +113,38 @@ func (m *Manager) Allocate(req AllocateRequest) (*AllocateResult, error) {
 			hostLabel, existingByHost.Project, existingByHost.Worktree, existingByHost.Name)
 	}
 
-	// Find available port
-	port, err := m.findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("finding available port: %w", err)
-	}
+	// Find available port and create lease with retry for UNIQUE constraint violations.
+	// Another portman process may grab the same port between findAvailablePort and CreateLease.
+	var lease *db.Lease
+	for attempt := 0; attempt < maxAllocateRetries; attempt++ {
+		port, err := m.findAvailablePort()
+		if err != nil {
+			return nil, fmt.Errorf("finding available port: %w", err)
+		}
 
-	lease := &db.Lease{
-		Port:         port,
-		Project:      req.Project,
-		Worktree:     req.Worktree,
-		WorktreePath: req.WorktreePath,
-		Repo:         req.Repo,
-		Name:         req.Name,
-		Hostname:     hostLabel,
-		Expose:       req.Expose,
-		State:        "active",
-	}
+		lease = &db.Lease{
+			Port:         port,
+			Project:      req.Project,
+			Worktree:     req.Worktree,
+			WorktreePath: req.WorktreePath,
+			Repo:         req.Repo,
+			Name:         req.Name,
+			Hostname:     hostLabel,
+			Expose:       req.Expose,
+			State:        "active",
+		}
 
-	if err := m.DB.CreateLease(lease); err != nil {
-		return nil, fmt.Errorf("creating lease: %w", err)
+		err = m.DB.CreateLease(lease)
+		if err == nil {
+			break
+		}
+		if !isUniqueConstraintError(err) {
+			return nil, fmt.Errorf("creating lease: %w", err)
+		}
+		// UNIQUE constraint violation on port — retry with a fresh port scan
+		if attempt == maxAllocateRetries-1 {
+			return nil, fmt.Errorf("creating lease: failed after %d retries: %w", maxAllocateRetries, err)
+		}
 	}
 
 	return &AllocateResult{
@@ -217,7 +233,15 @@ func (m *Manager) RunGC() (*GCResult, error) {
 	}
 
 	for _, lease := range activeLeases {
-		if !isPortListening(lease.Port) {
+		shouldMarkStale := false
+		if lease.PID > 0 && !isProcessAlive(lease.PID) {
+			// PID is tracked and process is dead → immediate stale
+			shouldMarkStale = true
+		} else if lease.PID <= 0 && !isPortListening(lease.Port) {
+			// No PID tracked → fallback to port listen check
+			shouldMarkStale = true
+		}
+		if shouldMarkStale {
 			now := time.Now()
 			if err := m.DB.UpdateLeaseState(lease.ID, "stale", &now); err != nil {
 				return nil, fmt.Errorf("marking lease stale: %w", err)
@@ -265,6 +289,12 @@ func (m *Manager) MaybeLightGC() (*GCResult, error) {
 	return m.RunGC()
 }
 
+// isProcessAlive checks if a process with the given PID is still running.
+func isProcessAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
+}
+
 // isPortListening checks if a port is currently being listened on.
 func isPortListening(port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 500*time.Millisecond)
@@ -273,6 +303,11 @@ func isPortListening(port int) bool {
 	}
 	conn.Close()
 	return true
+}
+
+// isUniqueConstraintError checks if the error is a SQLite UNIQUE constraint violation.
+func isUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 // AuditResult represents an unauthorized port usage.

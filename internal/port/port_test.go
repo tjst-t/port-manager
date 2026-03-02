@@ -1,6 +1,7 @@
 package port
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +35,18 @@ func setupTestManager(t *testing.T) *Manager {
 				{Name: "grafana", Port: 3000, Expose: true},
 			},
 		},
+	}
+}
+
+func TestIsProcessAlive(t *testing.T) {
+	// Current process should be alive
+	if !isProcessAlive(os.Getpid()) {
+		t.Error("expected current process to be alive")
+	}
+
+	// PID that almost certainly doesn't exist
+	if isProcessAlive(99999999) {
+		t.Error("expected non-existent PID to be dead")
 	}
 }
 
@@ -394,6 +407,50 @@ func TestAllocate_NoPortsAvailable(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected no-ports-available error")
+	}
+}
+
+func TestAllocate_RetryOnPortConflict(t *testing.T) {
+	m := setupTestManager(t)
+	m.Config.Ports.RangeStart = 9100
+	m.Config.Ports.RangeEnd = 9102 // 3 ports available
+
+	// Pre-occupy port 9100 directly in DB (simulating another process grabbing it)
+	conflicting := &db.Lease{
+		Port: 9100, Project: "other/project", Worktree: "main",
+		WorktreePath: "/tmp/other", Repo: "other", Name: "svc",
+		Hostname: "svc--main--other", State: "active",
+	}
+	if err := m.DB.CreateLease(conflicting); err != nil {
+		t.Fatal(err)
+	}
+
+	// Allocate should succeed by skipping the occupied port
+	result, err := m.Allocate(AllocateRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "api",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Lease.Port == 9100 {
+		t.Error("should not have allocated the conflicting port")
+	}
+	if result.Lease.Port < 9101 || result.Lease.Port > 9102 {
+		t.Errorf("port out of expected range: %d", result.Lease.Port)
+	}
+}
+
+func TestIsUniqueConstraintError(t *testing.T) {
+	if isUniqueConstraintError(nil) {
+		t.Error("nil error should not be a UNIQUE constraint error")
+	}
+	if isUniqueConstraintError(fmt.Errorf("some other error")) {
+		t.Error("unrelated error should not match")
+	}
+	if !isUniqueConstraintError(fmt.Errorf("creating lease: UNIQUE constraint failed: leases.port")) {
+		t.Error("UNIQUE constraint error should match")
 	}
 }
 
