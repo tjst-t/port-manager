@@ -15,15 +15,17 @@ type Handler struct {
 	Services     config.Services
 	ProxyConfig  config.ProxyConfig
 	StatusCheck  StatusChecker
+	Version      string
 }
 
 // NewHandler creates a new dashboard HTTP handler.
-func NewHandler(database *db.DB, services config.Services, proxyCfg config.ProxyConfig, checker StatusChecker) *Handler {
+func NewHandler(database *db.DB, services config.Services, proxyCfg config.ProxyConfig, checker StatusChecker, version string) *Handler {
 	return &Handler{
 		DB:          database,
 		Services:    services,
 		ProxyConfig: proxyCfg,
 		StatusCheck: checker,
+		Version:     version,
 	}
 }
 
@@ -35,7 +37,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := BuildDashboardData(leases, h.Services.Permanent, h.ProxyConfig.DomainSuffix, h.StatusCheck, true)
+	data := BuildDashboardData(leases, h.Services.Permanent, h.ProxyConfig.DomainSuffix, h.StatusCheck, true, h.Version)
 	html, err := RenderHTML(data)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to render dashboard: %v", err), http.StatusInternalServerError)

@@ -48,7 +48,7 @@ func TestHandler_ServesHTML(t *testing.T) {
 	// Always report alive
 	checker := func(l db.Lease) bool { return true }
 
-	handler := NewHandler(database, services, proxyCfg, checker)
+	handler := NewHandler(database, services, proxyCfg, checker, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -111,7 +111,7 @@ func TestHandler_StatusChecker(t *testing.T) {
 	// Report not alive
 	checker := func(l db.Lease) bool { return false }
 
-	handler := NewHandler(database, config.Services{}, proxyCfg, checker)
+	handler := NewHandler(database, config.Services{}, proxyCfg, checker, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestHandler_EmptyDB(t *testing.T) {
 	proxyCfg := config.ProxyConfig{DomainSuffix: "example.com"}
 	checker := func(l db.Lease) bool { return true }
 
-	handler := NewHandler(database, config.Services{}, proxyCfg, checker)
+	handler := NewHandler(database, config.Services{}, proxyCfg, checker, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()

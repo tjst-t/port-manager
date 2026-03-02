@@ -47,7 +47,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return port.IsPortListening(l.Port)
 	}
 
-	handler := dashboard.NewHandler(app.DB, app.Services, app.Config.Proxy, checker)
+	handler := dashboard.NewHandler(app.DB, app.Services, app.Config.Proxy, checker, Version)
 
 	srv := &http.Server{
 		Addr:    addr,

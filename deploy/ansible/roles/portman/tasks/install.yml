@@ -15,9 +15,19 @@
         dest: /tmp/port-manager
         version: "{{ portman_version | default('main') }}"
 
+    - name: Get version from git tag
+      ansible.builtin.command:
+        cmd: git describe --tags --always --dirty
+        chdir: /tmp/port-manager
+      register: portman_git_version
+      changed_when: false
+
     - name: Build binary
       ansible.builtin.command:
-        cmd: go build -o /usr/local/bin/portman .
+        cmd: >-
+          go build
+          -ldflags "-s -w -X github.com/tjst-t/port-manager/cmd.Version={{ portman_git_version.stdout }}"
+          -o /usr/local/bin/portman .
         chdir: /tmp/port-manager
       changed_when: true
 

@@ -24,7 +24,7 @@ func TestGenerate_CreatesFile(t *testing.T) {
 		{Name: "grafana", Port: 3000, Expose: true},
 	}
 
-	err := Generate(dir, leases, permanents, "example.com")
+	err := Generate(dir, leases, permanents, "example.com", "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestGenerate_HidesStaleLeases(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestGenerate_AllStaleShowsEmpty(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestGenerate_AllStaleShowsEmpty(t *testing.T) {
 func TestGenerate_EmptyLeases(t *testing.T) {
 	dir := t.TempDir()
 
-	err := Generate(dir, nil, nil, "example.com")
+	err := Generate(dir, nil, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestGenerate_EmptyLeases(t *testing.T) {
 func TestGenerate_CreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "dir")
 
-	err := Generate(dir, nil, nil, "example.com")
+	err := Generate(dir, nil, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestGenerate_XSSPrevention(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestGenerate_GroupedByProject(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestGenerate_BranchLinkSingleLease(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestGenerate_BranchNoLinkMultipleLeases(t *testing.T) {
 		},
 	}
 
-	err := Generate(dir, leases, nil, "example.com")
+	err := Generate(dir, leases, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestGenerate_BranchNoLinkMultipleLeases(t *testing.T) {
 func TestGenerate_Responsive(t *testing.T) {
 	dir := t.TempDir()
 
-	err := Generate(dir, nil, nil, "example.com")
+	err := Generate(dir, nil, nil, "example.com", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -103,7 +103,7 @@ func maybeUpdateDashboard(app *appContext) {
 		return
 	}
 
-	if err := dashboard.Generate(app.Config.Dashboard.OutputDir, leases, app.Services.Permanent, app.Config.Proxy.DomainSuffix); err != nil {
+	if err := dashboard.Generate(app.Config.Dashboard.OutputDir, leases, app.Services.Permanent, app.Config.Proxy.DomainSuffix, Version); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to update dashboard: %v\n", err)
 	}
 }

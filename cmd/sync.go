@@ -38,7 +38,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// Regenerate dashboard
 	if app.Config.Dashboard.Enabled {
-		if err := dashboard.Generate(app.Config.Dashboard.OutputDir, leases, app.Services.Permanent, app.Config.Proxy.DomainSuffix); err != nil {
+		if err := dashboard.Generate(app.Config.Dashboard.OutputDir, leases, app.Services.Permanent, app.Config.Proxy.DomainSuffix, Version); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to regenerate dashboard: %v\n", err)
 		} else {
 			fmt.Fprintln(os.Stderr, "sync: dashboard regenerated")
