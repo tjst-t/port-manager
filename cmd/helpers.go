@@ -88,7 +88,11 @@ func mustGetwd() string {
 }
 
 // maybeUpdateDashboard regenerates the dashboard if auto_update is enabled.
+// Set PORTMAN_NO_DASHBOARD=1 to skip (useful for local dev builds).
 func maybeUpdateDashboard(app *appContext) {
+	if os.Getenv("PORTMAN_NO_DASHBOARD") != "" {
+		return
+	}
 	if !app.Config.Dashboard.Enabled || !app.Config.Dashboard.AutoUpdate {
 		return
 	}
