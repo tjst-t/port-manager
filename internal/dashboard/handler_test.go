@@ -83,9 +83,9 @@ func TestHandler_ServesHTML(t *testing.T) {
 		t.Error("expected FQDN link")
 	}
 
-	// Check active status
-	if !strings.Contains(body, "active") {
-		t.Error("expected active status")
+	// Check active status dot
+	if !strings.Contains(body, "dot-active") {
+		t.Error("expected active status dot")
 	}
 
 	// Check permanent service
@@ -118,8 +118,8 @@ func TestHandler_StatusChecker(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	body := w.Body.String()
-	if !strings.Contains(body, "not running") {
-		t.Error("expected 'not running' status when checker returns false")
+	if !strings.Contains(body, "dot-inactive") {
+		t.Error("expected inactive status dot when checker returns false")
 	}
 }
 
