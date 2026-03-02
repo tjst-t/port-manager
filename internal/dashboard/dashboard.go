@@ -405,21 +405,14 @@ footer {
   color: var(--text-muted);
 }
 
-/* Responsive: stack branch layout on narrow screens */
+/* Responsive: tighten spacing on narrow screens while keeping layout */
 @media (max-width: 640px) {
   body { padding: 12px; }
-  .branch-row { flex-direction: column; }
-  .branch-name {
-    width: 100%;
-    min-width: unset;
-    padding: 8px 12px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
+  .branch-name { width: 100px; min-width: 80px; padding: 0 8px; font-size: .78rem; }
   .branch-services th,
-  .branch-services td { padding: 6px 8px; font-size: .8rem; }
+  .branch-services td { padding: 6px 8px; font-size: .78rem; }
   .permanent-card th,
-  .permanent-card td { padding: 8px 12px; font-size: .8rem; }
+  .permanent-card td { padding: 8px 10px; font-size: .78rem; }
 }
 </style>
 </head>
