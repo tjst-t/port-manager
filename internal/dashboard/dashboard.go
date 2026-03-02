@@ -29,6 +29,15 @@ func Generate(outputDir string, leases []db.Lease, permanents []config.Permanent
 }
 
 func renderHTML(leases []db.Lease, permanents []config.PermanentService, domainSuffix string) string {
+	// Filter out stale leases — dashboard is an access link collection
+	var activeLeases []db.Lease
+	for _, l := range leases {
+		if l.State != "stale" {
+			activeLeases = append(activeLeases, l)
+		}
+	}
+	leases = activeLeases
+
 	var b strings.Builder
 
 	b.WriteString(`<!DOCTYPE html>
