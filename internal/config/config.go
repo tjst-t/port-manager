@@ -94,7 +94,7 @@ func DefaultConfig() Config {
 			Host:       "portal.example.com",
 			OutputDir:  "/var/lib/portman/portal",
 			AutoUpdate: true,
-			ServeAddr:  ":8080",
+			ServeAddr:  "",
 		},
 	}
 }
