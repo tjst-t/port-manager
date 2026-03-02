@@ -423,6 +423,45 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 }
 
+func TestUpdateLeasePID(t *testing.T) {
+	d := setupTestDB(t)
+
+	lease := &Lease{
+		Port: 8270, Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo", Name: "svc",
+		Hostname: "svc--main--repo", State: "active",
+	}
+	if err := d.CreateLease(lease); err != nil {
+		t.Fatal(err)
+	}
+
+	// PID should be 0 initially
+	found, _ := d.FindLease("org/repo", "main", "svc")
+	if found.PID != 0 {
+		t.Errorf("expected PID=0 initially, got %d", found.PID)
+	}
+
+	// Update PID
+	if err := d.UpdateLeasePID(lease.ID, 12345); err != nil {
+		t.Fatal(err)
+	}
+
+	found, _ = d.FindLease("org/repo", "main", "svc")
+	if found.PID != 12345 {
+		t.Errorf("expected PID=12345, got %d", found.PID)
+	}
+
+	// Clear PID
+	if err := d.UpdateLeasePID(lease.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	found, _ = d.FindLease("org/repo", "main", "svc")
+	if found.PID != 0 {
+		t.Errorf("expected PID=0 after clear, got %d", found.PID)
+	}
+}
+
 func TestUpdateLeaseExpose(t *testing.T) {
 	d := setupTestDB(t)
 

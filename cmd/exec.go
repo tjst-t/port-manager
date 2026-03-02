@@ -63,10 +63,18 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Record PID for GC tracking
+	if pid := runner.PID(); pid > 0 {
+		if err := app.DB.UpdateLeasePID(result.Lease.ID, pid); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to record PID: %v\n", err)
+		}
+	}
+
 	// Wait for startup grace period (2s) to confirm process stays alive
 	alive, waitErr := runner.WaitStartup(2 * time.Second)
 	if !alive {
-		// Process exited during startup — skip Caddy registration, keep lease for retry
+		// Process exited during startup — clear PID, keep lease for retry
+		_ = app.DB.UpdateLeasePID(result.Lease.ID, 0)
 		return waitErr
 	}
 
@@ -82,5 +90,18 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	// Wait for process to complete
 	// No auto-release after command exits (reuse same port on restart)
-	return runner.Wait()
+	runErr := runner.Wait()
+
+	// Cleanup: remove Caddy route and clear PID (best-effort)
+	if result.Lease.Expose {
+		if err := app.Caddy.RemoveRoute(result.Lease.Hostname); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to remove Caddy route: %v\n", err)
+		}
+	}
+	_ = app.DB.UpdateLeasePID(result.Lease.ID, 0)
+
+	// Update dashboard after cleanup
+	maybeUpdateDashboard(app)
+
+	return runErr
 }

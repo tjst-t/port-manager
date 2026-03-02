@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -92,6 +93,33 @@ func TestStart_CommandNotFound(t *testing.T) {
 	_, err := Start("nonexistent-command-xyz", []string{}, 8080)
 	if err == nil {
 		t.Fatal("expected error for nonexistent command")
+	}
+}
+
+func TestPID(t *testing.T) {
+	runner, err := Start("sleep", []string{"30"}, 8080)
+	if err != nil {
+		t.Fatalf("unexpected Start error: %v", err)
+	}
+
+	pid := runner.PID()
+	if pid <= 0 {
+		t.Errorf("expected PID > 0 after Start, got %d", pid)
+	}
+
+	// Clean up
+	if runner.cmd.Process != nil {
+		runner.cmd.Process.Kill()
+		runner.Wait()
+	}
+}
+
+func TestPID_BeforeStart(t *testing.T) {
+	r := &Runner{
+		cmd: &exec.Cmd{},
+	}
+	if r.PID() != 0 {
+		t.Error("expected PID=0 before Start")
 	}
 }
 

@@ -28,6 +28,7 @@ type Lease struct {
 	StaleSince   *time.Time
 	CreatedAt    time.Time
 	LastUsed     time.Time
+	PID          int
 }
 
 // Open opens or creates the SQLite database at the given path.
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS leases (
     stale_since TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pid INTEGER DEFAULT 0,
     UNIQUE(project, worktree, name)
 );
 
@@ -78,15 +80,21 @@ CREATE TABLE IF NOT EXISTS gc_state (
     value TEXT
 );`
 
-	_, err := d.db.Exec(schema)
-	return err
+	if _, err := d.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Idempotent migration: add pid column for existing databases
+	_, _ = d.db.Exec(`ALTER TABLE leases ADD COLUMN pid INTEGER DEFAULT 0`)
+
+	return nil
 }
 
 // FindLease finds a lease by project, worktree, and name.
 func (d *DB) FindLease(project, worktree, name string) (*Lease, error) {
 	row := d.db.QueryRow(
 		`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		        expose, state, stale_since, created_at, last_used
+		        expose, state, stale_since, created_at, last_used, pid
 		 FROM leases WHERE project = ? AND worktree = ? AND name = ?`,
 		project, worktree, name,
 	)
@@ -97,7 +105,7 @@ func (d *DB) FindLease(project, worktree, name string) (*Lease, error) {
 func (d *DB) FindLeaseByHostname(hostname string) (*Lease, error) {
 	row := d.db.QueryRow(
 		`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		        expose, state, stale_since, created_at, last_used
+		        expose, state, stale_since, created_at, last_used, pid
 		 FROM leases WHERE hostname = ?`,
 		hostname,
 	)
@@ -147,6 +155,18 @@ func (d *DB) UpdateLastUsed(id int) error {
 	return nil
 }
 
+// UpdateLeasePID updates the PID for a lease.
+func (d *DB) UpdateLeasePID(id, pid int) error {
+	_, err := d.db.Exec(
+		`UPDATE leases SET pid = ? WHERE id = ?`,
+		pid, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating lease PID: %w", err)
+	}
+	return nil
+}
+
 // UpdateLeaseExpose updates the expose flag for a lease.
 func (d *DB) UpdateLeaseExpose(id int, expose bool) error {
 	_, err := d.db.Exec(
@@ -171,25 +191,25 @@ func (d *DB) DeleteLease(id int) error {
 // ListLeases returns all leases.
 func (d *DB) ListLeases() ([]Lease, error) {
 	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		expose, state, stale_since, created_at, last_used FROM leases ORDER BY port`)
+		expose, state, stale_since, created_at, last_used, pid FROM leases ORDER BY port`)
 }
 
 // ListActiveLeases returns leases with state='active'.
 func (d *DB) ListActiveLeases() ([]Lease, error) {
 	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		expose, state, stale_since, created_at, last_used FROM leases WHERE state = 'active' ORDER BY port`)
+		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE state = 'active' ORDER BY port`)
 }
 
 // ListStaleLeases returns leases with state='stale'.
 func (d *DB) ListStaleLeases() ([]Lease, error) {
 	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		expose, state, stale_since, created_at, last_used FROM leases WHERE state = 'stale' ORDER BY port`)
+		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE state = 'stale' ORDER BY port`)
 }
 
 // ListExposeLeases returns leases with expose=true.
 func (d *DB) ListExposeLeases() ([]Lease, error) {
 	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
-		expose, state, stale_since, created_at, last_used FROM leases WHERE expose = TRUE ORDER BY port`)
+		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE expose = TRUE ORDER BY port`)
 }
 
 // AllocatedPorts returns all currently allocated port numbers.
@@ -256,7 +276,7 @@ func (d *DB) queryLeases(query string, args ...any) ([]Lease, error) {
 		var createdAt, lastUsed sql.NullTime
 		if err := rows.Scan(&l.ID, &l.Port, &l.Project, &l.Worktree, &l.WorktreePath,
 			&l.Repo, &l.Name, &l.Hostname, &l.Expose, &l.State,
-			&staleSince, &createdAt, &lastUsed); err != nil {
+			&staleSince, &createdAt, &lastUsed, &l.PID); err != nil {
 			return nil, fmt.Errorf("scanning lease: %w", err)
 		}
 		if staleSince.Valid {
@@ -285,7 +305,7 @@ func scanLease(row scanner) (*Lease, error) {
 	var createdAt, lastUsed sql.NullTime
 	err := row.Scan(&l.ID, &l.Port, &l.Project, &l.Worktree, &l.WorktreePath,
 		&l.Repo, &l.Name, &l.Hostname, &l.Expose, &l.State,
-		&staleSince, &createdAt, &lastUsed)
+		&staleSince, &createdAt, &lastUsed, &l.PID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

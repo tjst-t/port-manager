@@ -84,6 +84,14 @@ func (r *Runner) WaitStartup(timeout time.Duration) (alive bool, err error) {
 	}
 }
 
+// PID returns the process ID of the child process, or 0 if not started.
+func (r *Runner) PID() int {
+	if r.cmd.Process != nil {
+		return r.cmd.Process.Pid
+	}
+	return 0
+}
+
 // Wait blocks until the child process exits, forwarding signals.
 func (r *Runner) Wait() error {
 	for {
