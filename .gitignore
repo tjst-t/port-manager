@@ -21,5 +21,6 @@ coverage.out
 # Environment
 .env
 
-# PID files
+# Serve artifacts
+.portman-serve
 .portman-serve.pid
