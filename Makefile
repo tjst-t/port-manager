@@ -1,10 +1,10 @@
-SERVE_BIN := .portman-serve
+BIN := .portman-local
 SERVE_PIDFILE := .portman-serve.pid
 
 .PHONY: serve
 serve: serve-stop
-	@go build -o $(SERVE_BIN) .
-	@nohup portman exec --name dashboard --expose -- ./$(SERVE_BIN) serve --addr :{} > /tmp/portman-serve.log 2>&1 & echo $$! > $(SERVE_PIDFILE)
+	@go build -o $(BIN) .
+	@nohup ./$(BIN) exec --name dashboard --expose -- ./$(BIN) serve --addr :{} > /tmp/portman-serve.log 2>&1 & echo $$! > $(SERVE_PIDFILE)
 	@sleep 1
 	@echo "portman serve started (PID $$(cat $(SERVE_PIDFILE))), log: /tmp/portman-serve.log"
 

@@ -21,6 +21,6 @@ coverage.out
 # Environment
 .env
 
-# Serve artifacts
-.portman-serve
+# Local build artifacts
+.portman-local
 .portman-serve.pid
