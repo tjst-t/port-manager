@@ -1,10 +1,20 @@
 ---
 # portman role defaults
 
-# Binary installation
-# portman_binary_url: https://github.com/tjst-t/port-manager/releases/download/v0.1.0/portman-linux-amd64
+# Installation
+# portman_install_method: "github_release" (default) or "source"
+portman_install_method: github_release
+
+# GitHub release settings (install_method: github_release)
+portman_github_repo: tjst-t/port-manager
+# portman_version: v0.1.0  # Pin to a specific tag. Omit to use latest release.
+
+# Direct URL override (skips GitHub API lookup)
+# portman_binary_url: https://example.com/portman
+
+# Source build settings (install_method: source)
 # portman_repo_url: https://github.com/tjst-t/port-manager.git
-# portman_version: main
+# portman_source_version: main
 
 # General
 portman_db_path: /var/lib/portman/portman.db

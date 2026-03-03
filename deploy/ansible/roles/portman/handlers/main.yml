@@ -2,3 +2,12 @@
 - name: Reload systemd
   ansible.builtin.systemd:
     daemon_reload: true
+
+- name: Restart portman services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - portman-serve.service
+    - portman-sync.service
+  when: ansible_facts.services[item] is defined

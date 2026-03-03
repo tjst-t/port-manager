@@ -1,19 +1,82 @@
 ---
-- name: Download portman binary
+# Direct URL override — highest priority
+- name: Download portman binary from direct URL
   ansible.builtin.get_url:
     url: "{{ portman_binary_url }}"
     dest: /usr/local/bin/portman
-    mode: '0755'
+    mode: "0755"
   when: portman_binary_url is defined
+  notify: Restart portman services
 
+# Install from GitHub release (default)
+- name: Install from GitHub release
+  when:
+    - portman_binary_url is not defined
+    - portman_install_method == 'github_release'
+  block:
+    - name: Get latest release info from GitHub API
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/{{ portman_github_repo }}/releases/latest"
+        return_content: true
+        headers:
+          Accept: application/vnd.github+json
+      register: portman_latest_release
+      when: portman_version is not defined
+
+    - name: Set release tag
+      ansible.builtin.set_fact:
+        _portman_release_tag: "{{ portman_version | default(portman_latest_release.json.tag_name) }}"
+
+    - name: Determine architecture
+      ansible.builtin.set_fact:
+        _portman_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+    - name: Set version without v prefix
+      ansible.builtin.set_fact:
+        _portman_version_bare: "{{ _portman_release_tag | regex_replace('^v', '') }}"
+
+    - name: Download checksums
+      ansible.builtin.get_url:
+        url: "https://github.com/{{ portman_github_repo }}/releases/download/{{ _portman_release_tag }}/checksums.txt"
+        dest: /tmp/portman_checksums.txt
+        mode: "0644"
+
+    - name: Read checksums file
+      ansible.builtin.slurp:
+        src: /tmp/portman_checksums.txt
+      register: _portman_checksums_raw
+
+    - name: Extract expected checksum for binary
+      ansible.builtin.set_fact:
+        _portman_checksum: >-
+          sha256:{{ (_portman_checksums_raw.content | b64decode).split('\n')
+            | select('search', 'port-manager_' + _portman_version_bare + '_linux_' + _portman_arch + '$')
+            | first | split(' ') | first }}
+
+    - name: Download portman binary
+      ansible.builtin.get_url:
+        url: "https://github.com/{{ portman_github_repo }}/releases/download/{{ _portman_release_tag }}/port-manager_{{ _portman_version_bare }}_linux_{{ _portman_arch }}"
+        dest: /usr/local/bin/portman
+        mode: "0755"
+        checksum: "{{ _portman_checksum }}"
+      notify: Restart portman services
+
+    - name: Clean up checksums file
+      ansible.builtin.file:
+        path: /tmp/portman_checksums.txt
+        state: absent
+
+# Build from source
 - name: Build portman from source
-  when: portman_binary_url is not defined
+  when:
+    - portman_binary_url is not defined
+    - portman_install_method == 'source'
   block:
     - name: Clone repository
       ansible.builtin.git:
-        repo: "{{ portman_repo_url | default('https://github.com/tjst-t/port-manager.git') }}"
+        repo: "{{ portman_repo_url | default('https://github.com/' + portman_github_repo + '.git') }}"
         dest: /tmp/port-manager
-        version: "{{ portman_version | default('main') }}"
+        version: "{{ portman_source_version | default('main') }}"
 
     - name: Get version from git tag
       ansible.builtin.command:
@@ -30,6 +93,7 @@
           -o /usr/local/bin/portman .
         chdir: /tmp/port-manager
       changed_when: true
+      notify: Restart portman services
 
     - name: Clean up source
       ansible.builtin.file:
