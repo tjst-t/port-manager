@@ -206,6 +206,13 @@ func (d *DB) ListStaleLeases() ([]Lease, error) {
 		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE state = 'stale' ORDER BY port`)
 }
 
+// FindLeasesByProjectWorktree returns all leases matching the given project and worktree.
+func (d *DB) FindLeasesByProjectWorktree(project, worktree string) ([]Lease, error) {
+	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE project = ? AND worktree = ? ORDER BY port`,
+		project, worktree)
+}
+
 // ListExposeLeases returns leases with expose=true.
 func (d *DB) ListExposeLeases() ([]Lease, error) {
 	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,

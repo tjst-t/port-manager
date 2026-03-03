@@ -462,6 +462,53 @@ func TestUpdateLeasePID(t *testing.T) {
 	}
 }
 
+func TestFindLeasesByProjectWorktree(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Create leases across different projects and worktrees
+	leases := []*Lease{
+		{Port: 8280, Project: "org/repo", Worktree: "main", WorktreePath: "/tmp/repo", Repo: "repo", Name: "api", Hostname: "api--main--repo", Expose: true, State: "active"},
+		{Port: 8281, Project: "org/repo", Worktree: "main", WorktreePath: "/tmp/repo", Repo: "repo", Name: "db", Hostname: "db--main--repo", State: "active"},
+		{Port: 8282, Project: "org/repo", Worktree: "feature", WorktreePath: "/tmp/repo-feature", Repo: "repo", Name: "api", Hostname: "api--feature--repo", State: "active"},
+		{Port: 8283, Project: "org/other", Worktree: "main", WorktreePath: "/tmp/other", Repo: "other", Name: "api", Hostname: "api--main--other", State: "active"},
+	}
+	for _, l := range leases {
+		if err := d.CreateLease(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Find leases for org/repo main
+	found, err := d.FindLeasesByProjectWorktree("org/repo", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 2 {
+		t.Errorf("expected 2 leases, got %d", len(found))
+	}
+	if found[0].Name != "api" || found[1].Name != "db" {
+		t.Errorf("unexpected leases: %v, %v", found[0].Name, found[1].Name)
+	}
+
+	// Find leases for org/repo feature
+	found, err = d.FindLeasesByProjectWorktree("org/repo", "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Errorf("expected 1 lease, got %d", len(found))
+	}
+
+	// No leases for non-existent combo
+	found, err = d.FindLeasesByProjectWorktree("org/repo", "nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 0 {
+		t.Errorf("expected 0 leases, got %d", len(found))
+	}
+}
+
 func TestUpdateLeaseExpose(t *testing.T) {
 	d := setupTestDB(t)
 
