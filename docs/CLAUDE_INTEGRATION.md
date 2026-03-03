@@ -285,6 +285,31 @@ serve:
 
 ---
 
+## `make serve` の前に既存プロセスを停止する
+
+`make serve` を実行する前に、同じワークツリーで起動中のプロセスがないか確認し、あれば停止すること。
+
+```bash
+# 現在のワークツリーのリース情報を JSON で取得
+portman list -c --json
+
+# PID が返ってきたらプロセスを kill してから起動
+kill <PID>
+make serve
+```
+
+`portman list -c --json` は以下のような JSON を返す:
+
+```json
+[{"name":"api","project":"org/repo","worktree":"main","port":8100,"hostname":"api--main--repo","expose":true,"status":"listening","pid":12345,"url":"https://api--main--repo.example.com"}]
+```
+
+- `pid` が存在し、`status` が `"listening"` なら、そのプロセスは起動中
+- `kill <pid>` で停止してから `make serve` を実行する
+- `pid` が省略されている（0）か `status` が `"not listening"` / `"stale"` ならそのまま `make serve` してよい
+
+---
+
 ## リリース・解放
 
 ```bash
