@@ -107,3 +107,11 @@ func maybeUpdateDashboard(app *appContext) {
 		fmt.Fprintf(os.Stderr, "warning: failed to update dashboard: %v\n", err)
 	}
 }
+
+// buildURL constructs the URL for a leased service.
+func buildURL(hostname, domainSuffix string, expose bool, port int) string {
+	if expose {
+		return "https://" + hostname + "." + domainSuffix
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
+}
