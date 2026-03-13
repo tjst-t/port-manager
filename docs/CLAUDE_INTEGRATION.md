@@ -285,28 +285,81 @@ serve:
 
 ---
 
-## `make serve` の前に既存プロセスを停止する
+## パターン 6: バックグラウンド起動 + PIDファイル管理（推奨）
 
-`make serve` を実行する前に、同じワークツリーで起動中のプロセスがないか確認し、あれば停止すること。
+`portman exec` はフォアグラウンドでプロセスを実行するため、Claude Code のようなエージェントから使う場合はターミナルがブロックされる。
+この方式では `portman env` でポートを取得し、プロセスをバックグラウンドで起動する。PIDファイルで管理し、再実行時に古いプロセスを自動で停止する。
 
-```bash
-# 現在のワークツリーのリース情報を JSON で取得
-portman list -c --json
+**この方式が推奨されるケース:**
+- Claude Code 等のエージェントが `make serve` を叩く場合
+- サーバーをバックグラウンドで起動し、ターミナルを占有したくない場合
 
-# PID が返ってきたらプロセスを kill してから起動
-kill <PID>
-make serve
+```makefile
+PID_FILE := /tmp/myapp-dev.pid
+LOG_FILE := /tmp/myapp-dev.log
+PORTMAN_ENV := /tmp/myapp-portman.env
+
+.PHONY: serve
+serve: build
+	@if [ -f $(PID_FILE) ]; then \
+	  OLD_PID=$$(cat $(PID_FILE)); \
+	  if kill -0 $$OLD_PID 2>/dev/null; then \
+	    echo "==> Killing previous process (PID: $$OLD_PID)..."; \
+	    kill $$OLD_PID; \
+	    for i in $$(seq 1 50); do kill -0 $$OLD_PID 2>/dev/null || break; sleep 0.1; done; \
+	    kill -0 $$OLD_PID 2>/dev/null && kill -9 $$OLD_PID 2>/dev/null || true; \
+	  fi; \
+	  rm -f $(PID_FILE); \
+	fi
+	@portman env --name api --expose --output $(PORTMAN_ENV)
+	@. $(PORTMAN_ENV) && \
+	  echo "==> Starting server on port $$API_PORT (log: $(LOG_FILE))" && \
+	  nohup ./myapp --port $$API_PORT > $(LOG_FILE) 2>&1 & \
+	  echo $$! > $(PID_FILE) && \
+	  echo "    PID: $$(cat $(PID_FILE))"
 ```
 
-`portman list -c --json` は以下のような JSON を返す:
+#### 仕組み
 
-```json
-[{"name":"api","project":"org/repo","worktree":"main","port":8100,"hostname":"api--main--repo","expose":true,"status":"listening","pid":12345,"url":"https://api--main--repo.example.com"}]
+1. **PIDファイルチェック**: 既存のPIDファイルがあれば、そのプロセスが生きているか確認
+2. **graceful stop**: まず `kill`（SIGTERM）で停止を試み、最大5秒待つ
+3. **強制停止**: SIGTERM で止まらなければ `kill -9`（SIGKILL）で強制終了
+4. **ポート取得**: `portman env` でポート番号を環境変数ファイルに出力
+5. **バックグラウンド起動**: `nohup` でプロセスを起動し、PIDをファイルに記録
+6. **ログ**: stdout/stderr はログファイルにリダイレクト
+
+#### カスタマイズポイント
+
+- `PID_FILE`, `LOG_FILE`, `PORTMAN_ENV` のパスはプロジェクトに合わせて変更する
+- `--name api` の部分はサービス名に合わせる（環境変数名は `API_PORT` になる）
+- ビルドが不要なら `serve: build` の `build` 依存を外す
+
+#### 言語別の起動行の例
+
+```makefile
+# Go
+nohup ./myapp --port $$API_PORT > $(LOG_FILE) 2>&1 &
+
+# Node.js
+nohup node server.js --port $$API_PORT > $(LOG_FILE) 2>&1 &
+
+# Python (uvicorn)
+nohup uvicorn main:app --port $$API_PORT > $(LOG_FILE) 2>&1 &
+
+# Rails
+nohup bin/rails server --port $$API_PORT > $(LOG_FILE) 2>&1 &
 ```
 
-- `pid` が存在し、`status` が `"listening"` なら、そのプロセスは起動中
-- `kill <pid>` で停止してから `make serve` を実行する
-- `pid` が省略されている（0）か `status` が `"not listening"` / `"stale"` ならそのまま `make serve` してよい
+#### 各プロジェクトの CLAUDE.md への記載例
+
+```markdown
+## サーバー起動
+
+- `make serve` でサーバーを起動する（バックグラウンド実行される）
+- 再度 `make serve` を実行すると、古いプロセスを自動で停止してから起動する
+- ログは `/tmp/myapp-dev.log` で確認できる
+- ポート番号を直接指定してはいけない
+```
 
 ---
 
