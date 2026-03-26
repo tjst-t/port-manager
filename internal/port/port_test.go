@@ -734,6 +734,54 @@ func TestAllocateRange_NotEnoughPorts(t *testing.T) {
 	}
 }
 
+func TestAllocate_ExistingRangeError(t *testing.T) {
+	m := setupTestManager(t)
+
+	// Create a range lease first
+	_, err := m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange", Count: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to allocate a single port with the same key
+	_, err = m.Allocate(AllocateRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange",
+	})
+	if err == nil {
+		t.Error("expected error when Allocate hits existing range lease")
+	}
+}
+
+func TestAllocateRange_ExistingSinglePortError(t *testing.T) {
+	m := setupTestManager(t)
+
+	// Create a single-port lease first
+	_, err := m.Allocate(AllocateRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myservice",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to allocate a range with the same key
+	_, err = m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myservice", Count: 5,
+	})
+	if err == nil {
+		t.Error("expected error when AllocateRange hits existing single-port lease")
+	}
+}
+
 func TestIsPortListening(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -86,6 +86,28 @@ func runEnv(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Validate no name collision between --name and --range
+	usedNames := make(map[string]bool)
+	for _, entry := range names {
+		name, _ := parseName(entry)
+		if usedNames[name] {
+			return fmt.Errorf("duplicate name %q in --name flags", name)
+		}
+		usedNames[name] = true
+	}
+	for _, entry := range ranges {
+		name, _, err := parseRange(entry)
+		if err != nil {
+			return err
+		}
+		if usedNames[name] {
+			return fmt.Errorf("name %q is used in both --name and --range", name)
+		}
+		if !usedNames[name] {
+			usedNames[name] = true
+		}
+	}
+
 	var lines []string
 
 	// Process --name entries

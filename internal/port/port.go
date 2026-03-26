@@ -96,6 +96,11 @@ func (m *Manager) Allocate(req AllocateRequest) (*AllocateResult, error) {
 	}
 
 	if existing != nil {
+		if existing.IsRange() {
+			return nil, fmt.Errorf("existing lease %s:%s:%s is a range lease, not a single port — release it first",
+				req.Project, req.Worktree, req.Name)
+		}
+
 		result := &AllocateResult{Lease: existing}
 
 		// If stale, reactivate
@@ -254,7 +259,13 @@ func (m *Manager) AllocateRange(req AllocateRangeRequest) (*AllocateRangeResult,
 			hostLabel, existingByHost.Project, existingByHost.Worktree, existingByHost.Name)
 	}
 
-	// Find contiguous block and create lease with retry
+	// Find contiguous block and create lease with retry.
+	// NOTE: The port UNIQUE constraint only protects the start port (port column).
+	// Ports within the range (port+1 to port_end) are not protected by DB constraints.
+	// Concurrent processes could theoretically overlap ranges. In practice this is
+	// mitigated by: (1) AllocatedPorts() expanding ranges before allocation, and
+	// (2) SQLite WAL mode serializing writes. A transaction-level check would be
+	// needed for full safety under high concurrency.
 	var lease *db.Lease
 	for attempt := 0; attempt < maxAllocateRetries; attempt++ {
 		startPort, err := m.findAvailablePortRange(req.Count)
