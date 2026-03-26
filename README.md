@@ -38,8 +38,10 @@ portman lease --name api --expose
 # ラップ実行（{}をポート番号に置換）
 portman exec --name api --expose -- go run main.go --port {}
 
-# Docker Compose連携
+# Docker Compose連携（全サービスexpose）
 portman env --expose --name api --name db --output .env
+# 特定のサービスだけexpose
+portman env --name api:expose --name db --output .env
 docker compose up
 
 # 一覧

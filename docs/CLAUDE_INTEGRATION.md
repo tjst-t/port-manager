@@ -157,6 +157,18 @@ clean-env:
 	portman release --name db
 ```
 
+#### サービスごとに expose を制御する
+
+`--name` に `:expose` サフィックスを付けると、そのサービスだけ Caddy に登録できる。
+
+```makefile
+.env:
+	portman env --name api:expose --name db --output .env
+```
+
+この例では `api` だけ Caddy 経由でアクセス可能になり、`db` はポート割当のみ行われる。
+`--expose` フラグを使うと全サービスが一括で expose される。
+
 #### docker-compose.yml
 
 ```yaml

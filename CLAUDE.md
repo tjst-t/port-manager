@@ -99,7 +99,7 @@ portman/
 portman lease [--name <service>] [--expose] [--worktree <n>]
 portman release [--name <service>] [--worktree <n>]
 portman exec [--name <service>] [--expose] [--worktree <n>] -- <command> {}
-portman env [--name <service>]... [--expose] [--output <path>]
+portman env [--name <service>[:expose]]... [--expose] [--output <path>]
 portman list
 portman gc
 portman audit
@@ -149,6 +149,8 @@ portman reserve <port> [--description <desc>]
 
 ### env動作
 - 複数 `--name` を受け取り、それぞれにポートをリース
+- `--name dashboard:expose` のように `:expose` サフィックスを付けると、そのサービスのみCaddyに登録
+- `--expose` フラグは全サービスに一括適用（`:expose` と併用可）
 - `NAME_PORT=XXXX` 形式で出力（name: 小文字→大文字、ハイフン→アンダースコア、末尾`_PORT`）
 - `--output <path>` でファイル書き出し、なければstdout
 

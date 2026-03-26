@@ -24,6 +24,15 @@ func init() {
 	rootCmd.AddCommand(envCmd)
 }
 
+// parseName parses a name entry which may have a ":expose" suffix.
+// e.g., "dashboard:expose" -> ("dashboard", true), "api" -> ("api", false)
+func parseName(entry string) (name string, expose bool) {
+	if strings.HasSuffix(entry, ":expose") {
+		return strings.TrimSuffix(entry, ":expose"), true
+	}
+	return entry, false
+}
+
 // nameToEnvVar converts a service name to an environment variable name.
 // e.g., "api" -> "API_PORT", "my-service" -> "MY_SERVICE_PORT"
 func nameToEnvVar(name string) string {
@@ -50,14 +59,15 @@ func runEnv(cmd *cobra.Command, args []string) error {
 	}
 
 	var lines []string
-	for _, name := range names {
+	for _, entry := range names {
+		name, perNameExpose := parseName(entry)
 		result, err := app.Manager.Allocate(port.AllocateRequest{
 			Project:      gitInfo.Project,
 			Worktree:     gitInfo.Worktree,
 			WorktreePath: gitInfo.WorktreePath,
 			Repo:         gitInfo.Repo,
 			Name:         name,
-			Expose:       expose,
+			Expose:       expose || perNameExpose,
 		})
 		if err != nil {
 			return fmt.Errorf("allocating port for %s: %w", name, err)

@@ -2,6 +2,32 @@ package cmd
 
 import "testing"
 
+func TestParseName(t *testing.T) {
+	tests := []struct {
+		entry      string
+		wantName   string
+		wantExpose bool
+	}{
+		{"api", "api", false},
+		{"dashboard:expose", "dashboard", true},
+		{"my-service", "my-service", false},
+		{"my-service:expose", "my-service", true},
+		{"expose", "expose", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.entry, func(t *testing.T) {
+			name, expose := parseName(tt.entry)
+			if name != tt.wantName {
+				t.Errorf("name: expected %q, got %q", tt.wantName, name)
+			}
+			if expose != tt.wantExpose {
+				t.Errorf("expose: expected %v, got %v", tt.wantExpose, expose)
+			}
+		})
+	}
+}
+
 func TestNameToEnvVar(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -201,8 +201,10 @@ portman exec [--name <service>] [--expose] [--worktree <name>] -- <command> {}
 portman release [--name <service>] [--worktree <name>]
 
 # Docker Compose連携
-portman env [--name <service>]... [--expose] [--output <path>]
+portman env [--name <service>[:expose]]... [--expose] [--output <path>]
 # → NAME_PORT=XXXX 形式で出力
+# → --name dashboard:expose のように :expose を付けるとそのサービスのみCaddy登録
+# → --expose フラグは全サービスに一括適用
 
 # 一覧
 portman list
@@ -299,7 +301,10 @@ services:
 ```
 
 ```bash
+# 全サービスをexpose
 portman env --expose --name api --name db --output .env
+# 特定のサービスだけexpose
+portman env --name api:expose --name db --output .env
 docker compose up
 ```
 
