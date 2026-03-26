@@ -79,6 +79,12 @@ func runEnv(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "warning: failed to register %s with Caddy: %v\n", name, err)
 			}
 		}
+		// Remove from Caddy if expose was removed
+		if result.ExposeRemoved {
+			if err := app.Caddy.RemoveRoute(result.Lease.Hostname); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to remove %s from Caddy: %v\n", name, err)
+			}
+		}
 
 		envVar := nameToEnvVar(name)
 		lines = append(lines, fmt.Sprintf("%s=%d", envVar, result.Lease.Port))

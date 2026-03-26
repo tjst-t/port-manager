@@ -74,6 +74,12 @@ func runLease(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "warning: failed to register with Caddy (will recover on sync): %v\n", err)
 		}
 	}
+	// Remove from Caddy if expose was removed
+	if result.ExposeRemoved {
+		if err := app.Caddy.RemoveRoute(result.Lease.Hostname); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to remove from Caddy: %v\n", err)
+		}
+	}
 
 	// Update dashboard
 	maybeUpdateDashboard(app)

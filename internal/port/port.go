@@ -40,7 +40,8 @@ type AllocateResult struct {
 	Lease       *db.Lease
 	IsNew       bool
 	WasStale    bool
-	ExposeAdded bool // true if expose was newly added (need Caddy registration)
+	ExposeAdded   bool // true if expose was newly added (need Caddy registration)
+	ExposeRemoved bool // true if expose was removed (need Caddy route deletion)
 }
 
 // ReleaseResult contains the result of a port release.
@@ -96,12 +97,16 @@ func (m *Manager) Allocate(req AllocateRequest) (*AllocateResult, error) {
 		}
 
 		// Update expose if needed
-		if req.Expose && !existing.Expose {
-			if err := m.DB.UpdateLeaseExpose(existing.ID, true); err != nil {
+		if req.Expose != existing.Expose {
+			if err := m.DB.UpdateLeaseExpose(existing.ID, req.Expose); err != nil {
 				return nil, fmt.Errorf("updating expose: %w", err)
 			}
-			existing.Expose = true
-			result.ExposeAdded = true
+			existing.Expose = req.Expose
+			if req.Expose {
+				result.ExposeAdded = true
+			} else {
+				result.ExposeRemoved = true
+			}
 		}
 
 		return result, nil
