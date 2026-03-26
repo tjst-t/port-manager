@@ -24,15 +24,17 @@ func init() {
 }
 
 type listLeaseEntry struct {
-	Name     string `json:"name"`
-	Project  string `json:"project"`
-	Worktree string `json:"worktree"`
-	Port     int    `json:"port"`
-	Hostname string `json:"hostname"`
-	Expose   bool   `json:"expose"`
-	Status   string `json:"status"`
-	PID      int    `json:"pid,omitempty"`
-	URL      string `json:"url"`
+	Name      string `json:"name"`
+	Project   string `json:"project"`
+	Worktree  string `json:"worktree"`
+	Port      int    `json:"port"`
+	PortEnd   int    `json:"port_end,omitempty"`
+	PortCount int    `json:"port_count,omitempty"`
+	Hostname  string `json:"hostname"`
+	Expose    bool   `json:"expose"`
+	Status    string `json:"status"`
+	PID       int    `json:"pid,omitempty"`
+	URL       string `json:"url"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -68,15 +70,17 @@ func runList(cmd *cobra.Command, args []string) error {
 		entries := make([]listLeaseEntry, len(leases))
 		for i, l := range leases {
 			entries[i] = listLeaseEntry{
-				Name:     l.Name,
-				Project:  l.Project,
-				Worktree: l.Worktree,
-				Port:     l.Port,
-				Hostname: l.Hostname,
-				Expose:   l.Expose,
-				Status:   plainStatus(l),
-				PID:      l.PID,
-				URL:      buildURL(l.Hostname, domainSuffix, l.Expose, l.Port),
+				Name:      l.Name,
+				Project:   l.Project,
+				Worktree:  l.Worktree,
+				Port:      l.Port,
+				PortEnd:   l.PortEnd,
+				PortCount: l.PortCount,
+				Hostname:  l.Hostname,
+				Expose:    l.Expose,
+				Status:    plainStatus(l),
+				PID:       l.PID,
+				URL:       buildURL(l.Hostname, domainSuffix, l.Expose, l.Port),
 			}
 		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(entries)
@@ -97,17 +101,24 @@ func runList(cmd *cobra.Command, args []string) error {
 			pid = strconv.Itoa(l.PID)
 		}
 
+		portStr := strconv.Itoa(l.Port)
+		if l.IsRange() {
+			portStr = fmt.Sprintf("%d-%d(%d)", l.Port, l.PortEnd, l.PortCount)
+		}
+
 		status := "○ stale"
 		if l.State == "active" {
-			if port.IsPortListening(l.Port) {
+			if l.IsRange() {
+				status = "● range"
+			} else if port.IsPortListening(l.Port) {
 				status = "● listening"
 			} else {
 				status = "○ not listening"
 			}
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			l.Project, l.Worktree, l.Name, l.Port, pid, expose, status)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			l.Project, l.Worktree, l.Name, portStr, pid, expose, status)
 	}
 	w.Flush()
 
@@ -144,6 +155,9 @@ func runList(cmd *cobra.Command, args []string) error {
 // plainStatus returns a plain text status string for JSON output.
 func plainStatus(l db.Lease) string {
 	if l.State == "active" {
+		if l.IsRange() {
+			return "range"
+		}
 		if port.IsPortListening(l.Port) {
 			return "listening"
 		}

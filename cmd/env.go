@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ func init() {
 	envCmd.Flags().Bool("expose", false, "Register with Caddy reverse proxy")
 	envCmd.Flags().String("worktree", "", "Manual worktree name")
 	envCmd.Flags().String("output", "", "Output file path (stdout if not specified)")
+	envCmd.Flags().StringSlice("range", nil, "Allocate port range: name=count (e.g., libvirt-hosts=20)")
 	rootCmd.AddCommand(envCmd)
 }
 
@@ -33,6 +35,23 @@ func parseName(entry string) (name string, expose bool) {
 	return entry, false
 }
 
+// parseRange parses a range entry in the form "name=count".
+func parseRange(entry string) (name string, count int, err error) {
+	parts := strings.SplitN(entry, "=", 2)
+	if len(parts) != 2 {
+		return "", 0, fmt.Errorf("invalid range format %q, expected name=count", entry)
+	}
+	name = parts[0]
+	if name == "" {
+		return "", 0, fmt.Errorf("range name cannot be empty")
+	}
+	count, err = strconv.Atoi(parts[1])
+	if err != nil || count <= 0 {
+		return "", 0, fmt.Errorf("range count must be a positive integer, got %q", parts[1])
+	}
+	return name, count, nil
+}
+
 // nameToEnvVar converts a service name to an environment variable name.
 // e.g., "api" -> "API_PORT", "my-service" -> "MY_SERVICE_PORT"
 func nameToEnvVar(name string) string {
@@ -41,11 +60,20 @@ func nameToEnvVar(name string) string {
 	return upper + "_PORT"
 }
 
+// nameToEnvVarRange converts a range name to start/end environment variable names.
+// e.g., "libvirt-hosts" -> ("LIBVIRT_HOSTS_PORT_START", "LIBVIRT_HOSTS_PORT_END")
+func nameToEnvVarRange(name string) (string, string) {
+	upper := strings.ToUpper(name)
+	upper = strings.ReplaceAll(upper, "-", "_")
+	return upper + "_PORT_START", upper + "_PORT_END"
+}
+
 func runEnv(cmd *cobra.Command, args []string) error {
 	names, _ := cmd.Flags().GetStringSlice("name")
 	expose, _ := cmd.Flags().GetBool("expose")
 	worktree, _ := cmd.Flags().GetString("worktree")
 	output, _ := cmd.Flags().GetString("output")
+	ranges, _ := cmd.Flags().GetStringSlice("range")
 
 	app, err := initApp()
 	if err != nil {
@@ -59,6 +87,8 @@ func runEnv(cmd *cobra.Command, args []string) error {
 	}
 
 	var lines []string
+
+	// Process --name entries
 	for _, entry := range names {
 		name, perNameExpose := parseName(entry)
 		result, err := app.Manager.Allocate(port.AllocateRequest{
@@ -88,6 +118,30 @@ func runEnv(cmd *cobra.Command, args []string) error {
 
 		envVar := nameToEnvVar(name)
 		lines = append(lines, fmt.Sprintf("%s=%d", envVar, result.Lease.Port))
+	}
+
+	// Process --range entries
+	for _, entry := range ranges {
+		name, count, err := parseRange(entry)
+		if err != nil {
+			return err
+		}
+
+		result, err := app.Manager.AllocateRange(port.AllocateRangeRequest{
+			Project:      gitInfo.Project,
+			Worktree:     gitInfo.Worktree,
+			WorktreePath: gitInfo.WorktreePath,
+			Repo:         gitInfo.Repo,
+			Name:         name,
+			Count:        count,
+		})
+		if err != nil {
+			return fmt.Errorf("allocating port range for %s: %w", name, err)
+		}
+
+		startVar, endVar := nameToEnvVarRange(name)
+		lines = append(lines, fmt.Sprintf("%s=%d", startVar, result.Lease.Port))
+		lines = append(lines, fmt.Sprintf("%s=%d", endVar, result.Lease.PortEnd))
 	}
 
 	// Update dashboard

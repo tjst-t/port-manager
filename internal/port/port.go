@@ -70,6 +70,23 @@ type GCResult struct {
 	TTLExpired      []GCEntry
 }
 
+// AllocateRangeRequest contains the parameters for allocating a port range.
+type AllocateRangeRequest struct {
+	Project      string
+	Worktree     string
+	WorktreePath string
+	Repo         string
+	Name         string
+	Count        int // number of contiguous ports to allocate
+}
+
+// AllocateRangeResult contains the result of a port range allocation.
+type AllocateRangeResult struct {
+	Lease    *db.Lease
+	IsNew    bool
+	WasStale bool
+}
+
 // Allocate assigns a port based on the request parameters.
 func (m *Manager) Allocate(req AllocateRequest) (*AllocateResult, error) {
 	// Check for existing lease
@@ -174,6 +191,146 @@ func (m *Manager) Allocate(req AllocateRequest) (*AllocateResult, error) {
 	}, nil
 }
 
+// AllocateRange assigns a contiguous range of ports based on the request parameters.
+func (m *Manager) AllocateRange(req AllocateRangeRequest) (*AllocateRangeResult, error) {
+	if req.Count <= 0 {
+		return nil, fmt.Errorf("range count must be positive, got %d", req.Count)
+	}
+
+	// Check for existing lease
+	existing, err := m.DB.FindLease(req.Project, req.Worktree, req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("finding existing lease: %w", err)
+	}
+
+	if existing != nil {
+		result := &AllocateRangeResult{Lease: existing}
+
+		if !existing.IsRange() {
+			return nil, fmt.Errorf("existing lease %s:%s:%s is a single-port lease, not a range — release it first",
+				req.Project, req.Worktree, req.Name)
+		}
+
+		if existing.PortCount != req.Count {
+			return nil, fmt.Errorf("existing range lease %s:%s:%s has count %d, requested %d — release it first",
+				req.Project, req.Worktree, req.Name, existing.PortCount, req.Count)
+		}
+
+		// If stale, reactivate
+		if existing.State == "stale" {
+			if err := m.DB.UpdateLeaseState(existing.ID, "active", nil); err != nil {
+				return nil, fmt.Errorf("reactivating lease: %w", err)
+			}
+			existing.State = "active"
+			existing.StaleSince = nil
+			result.WasStale = true
+		}
+
+		// Update last_used
+		if err := m.DB.UpdateLastUsed(existing.ID); err != nil {
+			return nil, fmt.Errorf("updating last_used: %w", err)
+		}
+
+		return result, nil
+	}
+
+	// Generate hostname for identification (ranges are never exposed)
+	hostname, err := git.GenerateHostname(
+		req.Name, req.Worktree, req.Repo,
+		m.Config.Proxy.HostPattern, m.Config.Proxy.DomainSuffix,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("generating hostname: %w", err)
+	}
+
+	hostLabel := hostname[:len(hostname)-len(m.Config.Proxy.DomainSuffix)-1]
+
+	existingByHost, err := m.DB.FindLeaseByHostname(hostLabel)
+	if err != nil {
+		return nil, fmt.Errorf("checking hostname collision: %w", err)
+	}
+	if existingByHost != nil {
+		return nil, fmt.Errorf("hostname collision: %s is already used by %s:%s:%s — use --name to differentiate",
+			hostLabel, existingByHost.Project, existingByHost.Worktree, existingByHost.Name)
+	}
+
+	// Find contiguous block and create lease with retry
+	var lease *db.Lease
+	for attempt := 0; attempt < maxAllocateRetries; attempt++ {
+		startPort, err := m.findAvailablePortRange(req.Count)
+		if err != nil {
+			return nil, fmt.Errorf("finding available port range: %w", err)
+		}
+
+		lease = &db.Lease{
+			Port:         startPort,
+			PortEnd:      startPort + req.Count - 1,
+			PortCount:    req.Count,
+			Project:      req.Project,
+			Worktree:     req.Worktree,
+			WorktreePath: req.WorktreePath,
+			Repo:         req.Repo,
+			Name:         req.Name,
+			Hostname:     hostLabel,
+			Expose:       false, // ranges are never exposed
+			State:        "active",
+		}
+
+		err = m.DB.CreateLease(lease)
+		if err == nil {
+			break
+		}
+		if !isUniqueConstraintError(err) {
+			return nil, fmt.Errorf("creating range lease: %w", err)
+		}
+		if attempt == maxAllocateRetries-1 {
+			return nil, fmt.Errorf("creating range lease: failed after %d retries: %w", maxAllocateRetries, err)
+		}
+	}
+
+	return &AllocateRangeResult{
+		Lease: lease,
+		IsNew: true,
+	}, nil
+}
+
+// findAvailablePortRange finds the first contiguous block of `count` ports in the configured range.
+func (m *Manager) findAvailablePortRange(count int) (int, error) {
+	allocatedPorts, err := m.DB.AllocatedPorts()
+	if err != nil {
+		return 0, err
+	}
+
+	usedPorts := make(map[int]bool)
+	for _, p := range allocatedPorts {
+		usedPorts[p] = true
+	}
+	for _, r := range m.Services.Reserved {
+		usedPorts[r.Port] = true
+	}
+	for _, p := range m.Services.Permanent {
+		usedPorts[p.Port] = true
+	}
+
+	// Scan for contiguous block
+	consecutive := 0
+	startPort := m.Config.Ports.RangeStart
+	for port := m.Config.Ports.RangeStart; port <= m.Config.Ports.RangeEnd; port++ {
+		if usedPorts[port] {
+			consecutive = 0
+			startPort = port + 1
+		} else {
+			consecutive++
+			if consecutive == count {
+				return startPort, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("no contiguous %d-port block available in range %d-%d",
+		count, m.Config.Ports.RangeStart, m.Config.Ports.RangeEnd)
+}
+
 // findAvailablePort finds the first available port in the configured range.
 func (m *Manager) findAvailablePort() (int, error) {
 	allocatedPorts, err := m.DB.AllocatedPorts()
@@ -255,7 +412,12 @@ func (m *Manager) RunGC() (*GCResult, error) {
 
 	for _, lease := range activeLeases {
 		shouldMarkStale := false
-		if lease.PID > 0 && !IsProcessAlive(lease.PID) {
+		if lease.IsRange() {
+			// Range leases: only check PID if tracked, skip port listen check
+			if lease.PID > 0 && !IsProcessAlive(lease.PID) {
+				shouldMarkStale = true
+			}
+		} else if lease.PID > 0 && !IsProcessAlive(lease.PID) {
 			// PID is tracked and process is dead → immediate stale
 			shouldMarkStale = true
 		} else if lease.PID <= 0 && !IsPortListening(lease.Port) {

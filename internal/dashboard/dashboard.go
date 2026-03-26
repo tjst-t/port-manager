@@ -18,14 +18,29 @@ type StatusChecker func(lease db.Lease) bool
 
 // LeaseView represents a lease for dashboard rendering.
 type LeaseView struct {
-	Name     string
-	Project  string
-	Worktree string
-	Port     int
-	Hostname string
-	Expose   bool
-	State    string
-	IsAlive  bool
+	Name      string
+	Project   string
+	Worktree  string
+	Port      int
+	PortEnd   int
+	PortCount int
+	Hostname  string
+	Expose    bool
+	State     string
+	IsAlive   bool
+}
+
+// IsRange returns true if this view represents a port range.
+func (v LeaseView) IsRange() bool {
+	return v.PortEnd > 0
+}
+
+// PortDisplay returns a display string for the port column.
+func (v LeaseView) PortDisplay() string {
+	if v.PortEnd > 0 {
+		return fmt.Sprintf("%d-%d(%d)", v.Port, v.PortEnd, v.PortCount)
+	}
+	return fmt.Sprintf("%d", v.Port)
 }
 
 // PermanentView represents a permanent service for dashboard rendering.
@@ -72,14 +87,16 @@ func BuildDashboardData(leases []db.Lease, permanents []config.PermanentService,
 			alive = checker(l)
 		}
 		views = append(views, LeaseView{
-			Name:     l.Name,
-			Project:  l.Project,
-			Worktree: l.Worktree,
-			Port:     l.Port,
-			Hostname: l.Hostname,
-			Expose:   l.Expose,
-			State:    l.State,
-			IsAlive:  alive,
+			Name:      l.Name,
+			Project:   l.Project,
+			Worktree:  l.Worktree,
+			Port:      l.Port,
+			PortEnd:   l.PortEnd,
+			PortCount: l.PortCount,
+			Hostname:  l.Hostname,
+			Expose:    l.Expose,
+			State:     l.State,
+			IsAlive:   alive,
 		})
 	}
 
@@ -439,7 +456,7 @@ footer {
         {{- range .Leases}}
         <tr>
           <td>{{nameLink . $.DomainSuffix}}</td>
-          <td>{{.Port}}</td>
+          <td>{{.PortDisplay}}</td>
           <td>{{statusDot .}}</td>
           <td>{{exposeBadge .Expose}}</td>
         </tr>

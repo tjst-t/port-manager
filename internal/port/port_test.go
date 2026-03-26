@@ -589,6 +589,151 @@ func TestKillLeaseProcess_NoPID_NoProcess(t *testing.T) {
 	}
 }
 
+func TestAllocateRange_Basic(t *testing.T) {
+	m := setupTestManager(t)
+
+	result, err := m.AllocateRange(AllocateRangeRequest{
+		Project:      "tjst-t/cirrus-sim",
+		Worktree:     "main",
+		WorktreePath: "/tmp/cirrus-sim",
+		Repo:         "cirrus-sim",
+		Name:         "libvirt-hosts",
+		Count:        20,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !result.IsNew {
+		t.Error("expected IsNew=true")
+	}
+	if !result.Lease.IsRange() {
+		t.Error("expected range lease")
+	}
+	if result.Lease.PortCount != 20 {
+		t.Errorf("expected PortCount=20, got %d", result.Lease.PortCount)
+	}
+	if result.Lease.PortEnd != result.Lease.Port+19 {
+		t.Errorf("expected PortEnd=%d, got %d", result.Lease.Port+19, result.Lease.PortEnd)
+	}
+	if result.Lease.Expose {
+		t.Error("range leases must not be exposed")
+	}
+}
+
+func TestAllocateRange_Contiguous(t *testing.T) {
+	m := setupTestManager(t)
+
+	// Allocate single ports first
+	for i := 0; i < 5; i++ {
+		_, err := m.Allocate(AllocateRequest{
+			Project: "org/repo", Worktree: "main",
+			WorktreePath: "/tmp/repo", Repo: "repo",
+			Name: fmt.Sprintf("svc-%d", i),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Allocate a range - should be contiguous after single ports
+	result, err := m.AllocateRange(AllocateRangeRequest{
+		Project:      "org/repo",
+		Worktree:     "main",
+		WorktreePath: "/tmp/repo",
+		Repo:         "repo",
+		Name:         "range-test",
+		Count:        10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify contiguous: all ports from Port to PortEnd should be allocated
+	if result.Lease.PortEnd-result.Lease.Port+1 != 10 {
+		t.Errorf("expected 10 contiguous ports, got %d", result.Lease.PortEnd-result.Lease.Port+1)
+	}
+
+	// Verify range ports don't overlap with single ports
+	allocatedPorts, _ := m.DB.AllocatedPorts()
+	portSet := make(map[int]int)
+	for _, p := range allocatedPorts {
+		portSet[p]++
+	}
+	for p, count := range portSet {
+		if count > 1 {
+			t.Errorf("port %d allocated %d times", p, count)
+		}
+	}
+}
+
+func TestAllocateRange_ExistingReuse(t *testing.T) {
+	m := setupTestManager(t)
+
+	result1, err := m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange", Count: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Allocate again with same key and count
+	result2, err := m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange", Count: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result2.IsNew {
+		t.Error("expected IsNew=false for existing range")
+	}
+	if result2.Lease.Port != result1.Lease.Port {
+		t.Errorf("expected same start port %d, got %d", result1.Lease.Port, result2.Lease.Port)
+	}
+}
+
+func TestAllocateRange_CountMismatchError(t *testing.T) {
+	m := setupTestManager(t)
+
+	_, err := m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange", Count: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Allocate again with different count
+	_, err = m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "myrange", Count: 10,
+	})
+	if err == nil {
+		t.Error("expected error for count mismatch")
+	}
+}
+
+func TestAllocateRange_NotEnoughPorts(t *testing.T) {
+	m := setupTestManager(t)
+
+	// Range is 9100-9199 = 100 ports
+	_, err := m.AllocateRange(AllocateRangeRequest{
+		Project: "org/repo", Worktree: "main",
+		WorktreePath: "/tmp/repo", Repo: "repo",
+		Name: "huge-range", Count: 101,
+	})
+	if err == nil {
+		t.Error("expected error when not enough ports")
+	}
+}
+
 func TestIsPortListening(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -17,6 +17,8 @@ type DB struct {
 type Lease struct {
 	ID           int
 	Port         int
+	PortEnd      int // 0 for single-port lease, >0 for range lease (inclusive end)
+	PortCount    int // 0 for single-port lease, >0 for range lease
 	Project      string
 	Worktree     string
 	WorktreePath string
@@ -29,6 +31,11 @@ type Lease struct {
 	CreatedAt    time.Time
 	LastUsed     time.Time
 	PID          int
+}
+
+// IsRange returns true if this lease represents a port range.
+func (l *Lease) IsRange() bool {
+	return l.PortEnd > 0
 }
 
 // Open opens or creates the SQLite database at the given path.
@@ -60,6 +67,8 @@ func (d *DB) migrate() error {
 CREATE TABLE IF NOT EXISTS leases (
     id INTEGER PRIMARY KEY,
     port INTEGER UNIQUE NOT NULL,
+    port_end INTEGER DEFAULT 0,
+    port_count INTEGER DEFAULT 0,
     project TEXT NOT NULL,
     worktree TEXT NOT NULL,
     worktree_path TEXT NOT NULL,
@@ -84,8 +93,10 @@ CREATE TABLE IF NOT EXISTS gc_state (
 		return err
 	}
 
-	// Idempotent migration: add pid column for existing databases
+	// Idempotent migrations for existing databases
 	_, _ = d.db.Exec(`ALTER TABLE leases ADD COLUMN pid INTEGER DEFAULT 0`)
+	_, _ = d.db.Exec(`ALTER TABLE leases ADD COLUMN port_end INTEGER DEFAULT 0`)
+	_, _ = d.db.Exec(`ALTER TABLE leases ADD COLUMN port_count INTEGER DEFAULT 0`)
 
 	return nil
 }
@@ -93,7 +104,7 @@ CREATE TABLE IF NOT EXISTS gc_state (
 // FindLease finds a lease by project, worktree, and name.
 func (d *DB) FindLease(project, worktree, name string) (*Lease, error) {
 	row := d.db.QueryRow(
-		`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+		`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		        expose, state, stale_since, created_at, last_used, pid
 		 FROM leases WHERE project = ? AND worktree = ? AND name = ?`,
 		project, worktree, name,
@@ -104,7 +115,7 @@ func (d *DB) FindLease(project, worktree, name string) (*Lease, error) {
 // FindLeaseByHostname finds a lease by hostname.
 func (d *DB) FindLeaseByHostname(hostname string) (*Lease, error) {
 	row := d.db.QueryRow(
-		`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+		`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		        expose, state, stale_since, created_at, last_used, pid
 		 FROM leases WHERE hostname = ?`,
 		hostname,
@@ -115,9 +126,9 @@ func (d *DB) FindLeaseByHostname(hostname string) (*Lease, error) {
 // CreateLease inserts a new lease record.
 func (d *DB) CreateLease(lease *Lease) error {
 	result, err := d.db.Exec(
-		`INSERT INTO leases (port, project, worktree, worktree_path, repo, name, hostname, expose, state)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		lease.Port, lease.Project, lease.Worktree, lease.WorktreePath,
+		`INSERT INTO leases (port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname, expose, state)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		lease.Port, lease.PortEnd, lease.PortCount, lease.Project, lease.Worktree, lease.WorktreePath,
 		lease.Repo, lease.Name, lease.Hostname, lease.Expose, lease.State,
 	)
 	if err != nil {
@@ -190,38 +201,39 @@ func (d *DB) DeleteLease(id int) error {
 
 // ListLeases returns all leases.
 func (d *DB) ListLeases() ([]Lease, error) {
-	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+	return d.queryLeases(`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		expose, state, stale_since, created_at, last_used, pid FROM leases ORDER BY port`)
 }
 
 // ListActiveLeases returns leases with state='active'.
 func (d *DB) ListActiveLeases() ([]Lease, error) {
-	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+	return d.queryLeases(`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE state = 'active' ORDER BY port`)
 }
 
 // ListStaleLeases returns leases with state='stale'.
 func (d *DB) ListStaleLeases() ([]Lease, error) {
-	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+	return d.queryLeases(`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE state = 'stale' ORDER BY port`)
 }
 
 // FindLeasesByProjectWorktree returns all leases matching the given project and worktree.
 func (d *DB) FindLeasesByProjectWorktree(project, worktree string) ([]Lease, error) {
-	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+	return d.queryLeases(`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE project = ? AND worktree = ? ORDER BY port`,
 		project, worktree)
 }
 
 // ListExposeLeases returns leases with expose=true.
 func (d *DB) ListExposeLeases() ([]Lease, error) {
-	return d.queryLeases(`SELECT id, port, project, worktree, worktree_path, repo, name, hostname,
+	return d.queryLeases(`SELECT id, port, port_end, port_count, project, worktree, worktree_path, repo, name, hostname,
 		expose, state, stale_since, created_at, last_used, pid FROM leases WHERE expose = TRUE ORDER BY port`)
 }
 
 // AllocatedPorts returns all currently allocated port numbers.
+// For range leases, all ports in the range are expanded.
 func (d *DB) AllocatedPorts() ([]int, error) {
-	rows, err := d.db.Query(`SELECT port FROM leases ORDER BY port`)
+	rows, err := d.db.Query(`SELECT port, port_end FROM leases ORDER BY port`)
 	if err != nil {
 		return nil, fmt.Errorf("querying allocated ports: %w", err)
 	}
@@ -229,11 +241,17 @@ func (d *DB) AllocatedPorts() ([]int, error) {
 
 	var ports []int
 	for rows.Next() {
-		var port int
-		if err := rows.Scan(&port); err != nil {
+		var p, pEnd int
+		if err := rows.Scan(&p, &pEnd); err != nil {
 			return nil, fmt.Errorf("scanning port: %w", err)
 		}
-		ports = append(ports, port)
+		if pEnd > 0 {
+			for i := p; i <= pEnd; i++ {
+				ports = append(ports, i)
+			}
+		} else {
+			ports = append(ports, p)
+		}
 	}
 	return ports, rows.Err()
 }
@@ -281,7 +299,7 @@ func (d *DB) queryLeases(query string, args ...any) ([]Lease, error) {
 		var l Lease
 		var staleSince sql.NullTime
 		var createdAt, lastUsed sql.NullTime
-		if err := rows.Scan(&l.ID, &l.Port, &l.Project, &l.Worktree, &l.WorktreePath,
+		if err := rows.Scan(&l.ID, &l.Port, &l.PortEnd, &l.PortCount, &l.Project, &l.Worktree, &l.WorktreePath,
 			&l.Repo, &l.Name, &l.Hostname, &l.Expose, &l.State,
 			&staleSince, &createdAt, &lastUsed, &l.PID); err != nil {
 			return nil, fmt.Errorf("scanning lease: %w", err)
@@ -310,7 +328,7 @@ func scanLease(row scanner) (*Lease, error) {
 	var l Lease
 	var staleSince sql.NullTime
 	var createdAt, lastUsed sql.NullTime
-	err := row.Scan(&l.ID, &l.Port, &l.Project, &l.Worktree, &l.WorktreePath,
+	err := row.Scan(&l.ID, &l.Port, &l.PortEnd, &l.PortCount, &l.Project, &l.Worktree, &l.WorktreePath,
 		&l.Repo, &l.Name, &l.Hostname, &l.Expose, &l.State,
 		&staleSince, &createdAt, &lastUsed, &l.PID)
 	if err != nil {
